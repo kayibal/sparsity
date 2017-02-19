@@ -8,6 +8,6 @@
 
 #ifndef main_h
 #define main_h
-uint64_t * index_list_to_array(linked_list_t *list)
-
+void traildb_coo_repr(const char* fname, const char* fieldname,
+                      uint64_t* row_idx_array, uint64_t* col_idx_array)
 #endif /* main_h */

@@ -11,13 +11,10 @@
 #include "hashtable.h"
 #include "linklist.h"
 
-int main(int argc, const char * argv[]) {
-    linked_list_t *mat_col_idx = list_create();
-    linked_list_t *mat_row_idx = list_create();
-    
+void traildb_coo_repr(const char* fname, const char* fieldname,
+                     uint64_t* row_idx_array, uint64_t* col_idx_array){
     tdb_error err;
-    const char *fields[] = {"username", "action"};
-    const char * db_path = argv[1];
+    const char * db_path = "/Users/kayibal/Code/traildb-python/examples/tiny.tdb";
     tdb* db = tdb_init();
     
     printf("%s\n", db_path);
@@ -25,7 +22,7 @@ int main(int argc, const char * argv[]) {
         printf("Opening TrailDB failed: %s\n", tdb_error_str(err));
         exit(1);
     }
-    
+
     tdb_field *oh_field;
     if (( err = tdb_get_field(db, "username", oh_field))){
         printf("Could not find field: %s\n", tdb_error_str(err));
@@ -63,28 +60,36 @@ int main(int argc, const char * argv[]) {
                         cidx = max_col_idx;
                         max_col_idx += 1;
                     }
-                    list_push_value(mat_row_idx, row_idx);
-                    list_push_value(mat_col_idx, cidx);
+                    row_idx_array[row_idx] = row_idx;
+                    col_idx_array[row_idx] = cidx;
                     row_idx += 1;
                     break;
                 }
             }
         }
     }
-    
-    while (list_count(mat_row_idx)){
-        //printf("%d\n", (int)(l_idx));
-        uint64_t loc= (uint64_t)(list_pop_value(mat_row_idx));
-        printf("mat_row_idx: %d\n", (int)(loc));
-    }
-    
-    while (list_count(mat_col_idx)){
-        //printf("%d\n", (int)(l_idx));
-        uint64_t loc= (uint64_t)(list_pop_value(mat_col_idx));
-        printf("mat_col_idx: %d\n", (int)(loc));
-    }
-    
-    
-    return 0;
+    tdb_cursor_free(cursor);
+    ht_destroy(col_mapping);
+    tdb_close(db);
 }
 
+int main(int argc, const char * argv[]) {
+    tdb_error err;
+    const char * db_path = argv[1];
+    tdb* db = tdb_init();
+    
+    printf("%s\n", db_path);
+    if ((err = tdb_open(db, db_path))){
+        printf("Opening TrailDB failed: %s\n", tdb_error_str(err));
+        exit(1);
+    }
+    
+    uint64_t num_events = tdb_num_events(db);
+    
+    tdb_close(db);
+    
+    uint64_t *row_idx_array = malloc(sizeof(uint64_t) * num_events);
+    uint64_t *col_idx_array = malloc(sizeof(uint64_t) * num_events);
+    traildb_coo_repr(argv[1], "username", row_idx_array, col_idx_array);
+    return 0;
+}
