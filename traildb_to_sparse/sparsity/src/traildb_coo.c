@@ -11,6 +11,7 @@
 
 void traildb_coo_repr(const char* fname, const char* fieldname,
                       uint64_t* row_idx_array, uint64_t* col_idx_array){
+    int summed = 0;
     tdb_error err;
     const char * db_path = fname;
     tdb* db = tdb_init();
@@ -58,14 +59,17 @@ void traildb_coo_repr(const char* fname, const char* fieldname,
                         cidx = max_col_idx;
                         max_col_idx += 1;
                     }
-                    row_idx_array[row_idx] = row_idx;
-                    col_idx_array[row_idx] = cidx;
-                    row_idx += 1;
+                    if (summed <=0){
+                        row_idx_array[row_idx] = row_idx;
+                        col_idx_array[row_idx] = cidx;
+                        row_idx += 1;
+                    }
                     break;
                 }
             }
         }
     }
+    // TODO: return colnames
     tdb_cursor_free(cursor);
     ht_destroy(col_mapping);
     tdb_close(db);

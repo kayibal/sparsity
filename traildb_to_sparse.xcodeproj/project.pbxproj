@@ -9,8 +9,9 @@
 /* Begin PBXBuildFile section */
 		BC713C441E59E67700C0268C /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C431E59E67700C0268C /* main.c */; };
 		BC713C541E5A017100C0268C /* hashtable.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C501E5A017100C0268C /* hashtable.c */; };
-		BC713C551E5A017100C0268C /* linklist.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C521E5A017100C0268C /* linklist.c */; };
 		BC713C581E5A2D3E00C0268C /* libtraildb.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BC713C571E5A2D3E00C0268C /* libtraildb.a */; };
+		BC713C5B1E5A3E4B00C0268C /* traildb_coo.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C591E5A3E4B00C0268C /* traildb_coo.c */; };
+		BC713C5E1E5A531E00C0268C /* linklist.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C5C1E5A531E00C0268C /* linklist.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -31,10 +32,11 @@
 		BC713C4B1E59E94800C0268C /* libtraildb.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libtraildb.0.dylib; path = ../../../../../usr/local/Cellar/traildb/0.5/lib/libtraildb.0.dylib; sourceTree = "<group>"; };
 		BC713C501E5A017100C0268C /* hashtable.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = hashtable.c; path = "../../../../Downloads/libhl-master/src/hashtable.c"; sourceTree = "<group>"; };
 		BC713C511E5A017100C0268C /* hashtable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = hashtable.h; path = "../../../../Downloads/libhl-master/src/hashtable.h"; sourceTree = "<group>"; };
-		BC713C521E5A017100C0268C /* linklist.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linklist.c; path = "../../../../Downloads/libhl-master/src/linklist.c"; sourceTree = "<group>"; };
-		BC713C531E5A017100C0268C /* linklist.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linklist.h; path = "../../../../Downloads/libhl-master/src/linklist.h"; sourceTree = "<group>"; };
-		BC713C561E5A1FB000C0268C /* main.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
 		BC713C571E5A2D3E00C0268C /* libtraildb.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtraildb.a; path = ../../../../../usr/local/Cellar/traildb/0.5/lib/libtraildb.a; sourceTree = "<group>"; };
+		BC713C591E5A3E4B00C0268C /* traildb_coo.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = traildb_coo.c; sourceTree = "<group>"; };
+		BC713C5A1E5A3E4B00C0268C /* traildb_coo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = traildb_coo.h; sourceTree = "<group>"; };
+		BC713C5C1E5A531E00C0268C /* linklist.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linklist.c; path = "../../../../Downloads/libhl-master/src/linklist.c"; sourceTree = "<group>"; };
+		BC713C5D1E5A531E00C0268C /* linklist.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linklist.h; path = "../../../../Downloads/libhl-master/src/linklist.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,11 +72,12 @@
 			isa = PBXGroup;
 			children = (
 				BC713C431E59E67700C0268C /* main.c */,
+				BC713C591E5A3E4B00C0268C /* traildb_coo.c */,
+				BC713C5A1E5A3E4B00C0268C /* traildb_coo.h */,
 				BC713C501E5A017100C0268C /* hashtable.c */,
 				BC713C511E5A017100C0268C /* hashtable.h */,
-				BC713C521E5A017100C0268C /* linklist.c */,
-				BC713C531E5A017100C0268C /* linklist.h */,
-				BC713C561E5A1FB000C0268C /* main.h */,
+				BC713C5C1E5A531E00C0268C /* linklist.c */,
+				BC713C5D1E5A531E00C0268C /* linklist.h */,
 			);
 			path = traildb_to_sparse;
 			sourceTree = "<group>";
@@ -145,7 +148,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BC713C551E5A017100C0268C /* linklist.c in Sources */,
+				BC713C5B1E5A3E4B00C0268C /* traildb_coo.c in Sources */,
+				BC713C5E1E5A531E00C0268C /* linklist.c in Sources */,
 				BC713C441E59E67700C0268C /* main.c in Sources */,
 				BC713C541E5A017100C0268C /* hashtable.c in Sources */,
 			);
