@@ -27,8 +27,10 @@ int main(int argc, const char * argv[]) {
     
     uint64_t *row_idx_array = malloc(sizeof(uint64_t) * num_events);
     uint64_t *col_idx_array = malloc(sizeof(uint64_t) * num_events);
+    uint64_t *uids = malloc(sizeof(uint64_t) * num_events);
+    uint64_t *timestamps = malloc(sizeof(uint64_t) * num_events);
     
-    traildb_coo_repr(db_path, "username", row_idx_array, col_idx_array);
+    traildb_coo_repr(db_path, "username", row_idx_array, col_idx_array, uids, timestamps);
     
     int i;
     for (i=0; i < num_events; i++){

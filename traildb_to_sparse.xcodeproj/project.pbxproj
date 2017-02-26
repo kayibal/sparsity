@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BC713C441E59E67700C0268C /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C431E59E67700C0268C /* main.c */; };
-		BC713C541E5A017100C0268C /* hashtable.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C501E5A017100C0268C /* hashtable.c */; };
-		BC713C581E5A2D3E00C0268C /* libtraildb.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BC713C571E5A2D3E00C0268C /* libtraildb.a */; };
-		BC713C5B1E5A3E4B00C0268C /* traildb_coo.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C591E5A3E4B00C0268C /* traildb_coo.c */; };
-		BC713C5E1E5A531E00C0268C /* linklist.c in Sources */ = {isa = PBXBuildFile; fileRef = BC713C5C1E5A531E00C0268C /* linklist.c */; };
+		BC57C9931E5E4F9D00CE1A4E /* libtraildb.0.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = BC713C4B1E59E94800C0268C /* libtraildb.0.dylib */; };
+		BC57C9A21E5E50C000CE1A4E /* hashtable.c in Sources */ = {isa = PBXBuildFile; fileRef = BC57C99B1E5E50C000CE1A4E /* hashtable.c */; };
+		BC57C9A31E5E50C000CE1A4E /* linklist.c in Sources */ = {isa = PBXBuildFile; fileRef = BC57C99D1E5E50C000CE1A4E /* linklist.c */; };
+		BC57C9A41E5E50C000CE1A4E /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = BC57C99F1E5E50C000CE1A4E /* main.c */; };
+		BC57C9A51E5E50C000CE1A4E /* traildb_coo.c in Sources */ = {isa = PBXBuildFile; fileRef = BC57C9A01E5E50C000CE1A4E /* traildb_coo.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -27,16 +27,18 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		BC57C9991E5E50C000CE1A4E /* atomic_defs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atomic_defs.h; path = traildb_to_sparse/sparsity/src/atomic_defs.h; sourceTree = "<group>"; };
+		BC57C99A1E5E50C000CE1A4E /* bsd_queue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = bsd_queue.h; path = traildb_to_sparse/sparsity/src/bsd_queue.h; sourceTree = "<group>"; };
+		BC57C99B1E5E50C000CE1A4E /* hashtable.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = hashtable.c; path = traildb_to_sparse/sparsity/src/hashtable.c; sourceTree = "<group>"; };
+		BC57C99C1E5E50C000CE1A4E /* hashtable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = hashtable.h; path = traildb_to_sparse/sparsity/src/hashtable.h; sourceTree = "<group>"; };
+		BC57C99D1E5E50C000CE1A4E /* linklist.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linklist.c; path = traildb_to_sparse/sparsity/src/linklist.c; sourceTree = "<group>"; };
+		BC57C99E1E5E50C000CE1A4E /* linklist.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linklist.h; path = traildb_to_sparse/sparsity/src/linklist.h; sourceTree = "<group>"; };
+		BC57C99F1E5E50C000CE1A4E /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = main.c; path = traildb_to_sparse/sparsity/src/main.c; sourceTree = "<group>"; };
+		BC57C9A01E5E50C000CE1A4E /* traildb_coo.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = traildb_coo.c; path = traildb_to_sparse/sparsity/src/traildb_coo.c; sourceTree = "<group>"; };
+		BC57C9A11E5E50C000CE1A4E /* traildb_coo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = traildb_coo.h; path = traildb_to_sparse/sparsity/src/traildb_coo.h; sourceTree = "<group>"; };
 		BC713C401E59E67700C0268C /* traildb_to_sparse */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = traildb_to_sparse; sourceTree = BUILT_PRODUCTS_DIR; };
-		BC713C431E59E67700C0268C /* main.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = main.c; sourceTree = "<group>"; };
 		BC713C4B1E59E94800C0268C /* libtraildb.0.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libtraildb.0.dylib; path = ../../../../../usr/local/Cellar/traildb/0.5/lib/libtraildb.0.dylib; sourceTree = "<group>"; };
-		BC713C501E5A017100C0268C /* hashtable.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = hashtable.c; path = "../../../../Downloads/libhl-master/src/hashtable.c"; sourceTree = "<group>"; };
-		BC713C511E5A017100C0268C /* hashtable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = hashtable.h; path = "../../../../Downloads/libhl-master/src/hashtable.h"; sourceTree = "<group>"; };
 		BC713C571E5A2D3E00C0268C /* libtraildb.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libtraildb.a; path = ../../../../../usr/local/Cellar/traildb/0.5/lib/libtraildb.a; sourceTree = "<group>"; };
-		BC713C591E5A3E4B00C0268C /* traildb_coo.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = traildb_coo.c; sourceTree = "<group>"; };
-		BC713C5A1E5A3E4B00C0268C /* traildb_coo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = traildb_coo.h; sourceTree = "<group>"; };
-		BC713C5C1E5A531E00C0268C /* linklist.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linklist.c; path = "../../../../Downloads/libhl-master/src/linklist.c"; sourceTree = "<group>"; };
-		BC713C5D1E5A531E00C0268C /* linklist.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linklist.h; path = "../../../../Downloads/libhl-master/src/linklist.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,7 +46,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BC713C581E5A2D3E00C0268C /* libtraildb.a in Frameworks */,
+				BC57C9931E5E4F9D00CE1A4E /* libtraildb.0.dylib in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -54,7 +56,15 @@
 		BC713C371E59E67700C0268C = {
 			isa = PBXGroup;
 			children = (
-				BC713C421E59E67700C0268C /* traildb_to_sparse */,
+				BC57C9991E5E50C000CE1A4E /* atomic_defs.h */,
+				BC57C99A1E5E50C000CE1A4E /* bsd_queue.h */,
+				BC57C99B1E5E50C000CE1A4E /* hashtable.c */,
+				BC57C99C1E5E50C000CE1A4E /* hashtable.h */,
+				BC57C99D1E5E50C000CE1A4E /* linklist.c */,
+				BC57C99E1E5E50C000CE1A4E /* linklist.h */,
+				BC57C99F1E5E50C000CE1A4E /* main.c */,
+				BC57C9A01E5E50C000CE1A4E /* traildb_coo.c */,
+				BC57C9A11E5E50C000CE1A4E /* traildb_coo.h */,
 				BC713C411E59E67700C0268C /* Products */,
 				BC713C4A1E59E94800C0268C /* Frameworks */,
 			);
@@ -66,20 +76,6 @@
 				BC713C401E59E67700C0268C /* traildb_to_sparse */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		BC713C421E59E67700C0268C /* traildb_to_sparse */ = {
-			isa = PBXGroup;
-			children = (
-				BC713C431E59E67700C0268C /* main.c */,
-				BC713C591E5A3E4B00C0268C /* traildb_coo.c */,
-				BC713C5A1E5A3E4B00C0268C /* traildb_coo.h */,
-				BC713C501E5A017100C0268C /* hashtable.c */,
-				BC713C511E5A017100C0268C /* hashtable.h */,
-				BC713C5C1E5A531E00C0268C /* linklist.c */,
-				BC713C5D1E5A531E00C0268C /* linklist.h */,
-			);
-			path = traildb_to_sparse;
 			sourceTree = "<group>";
 		};
 		BC713C4A1E59E94800C0268C /* Frameworks */ = {
@@ -148,10 +144,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BC713C5B1E5A3E4B00C0268C /* traildb_coo.c in Sources */,
-				BC713C5E1E5A531E00C0268C /* linklist.c in Sources */,
-				BC713C441E59E67700C0268C /* main.c in Sources */,
-				BC713C541E5A017100C0268C /* hashtable.c in Sources */,
+				BC57C9A51E5E50C000CE1A4E /* traildb_coo.c in Sources */,
+				BC57C9A21E5E50C000CE1A4E /* hashtable.c in Sources */,
+				BC57C9A31E5E50C000CE1A4E /* linklist.c in Sources */,
+				BC57C9A41E5E50C000CE1A4E /* main.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

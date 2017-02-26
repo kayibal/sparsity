@@ -10,7 +10,8 @@
 #include "traildb_coo.h"
 
 void traildb_coo_repr(const char* fname, const char* fieldname,
-                      uint64_t* row_idx_array, uint64_t* col_idx_array){
+                      uint64_t* row_idx_array, uint64_t* col_idx_array,
+                      uint64_t* uids, uint64_t* timestamps){
     int summed = 0;
     tdb_error err;
     const char * db_path = fname;
@@ -39,6 +40,7 @@ void traildb_coo_repr(const char* fname, const char* fieldname,
     uint64_t j;
     uint64_t row_idx = 0;
     uint64_t cidx;
+    
     /* loop over all trails aka users */
     for (i = 0; i < tdb_num_trails(db); i++){
         const tdb_event *event;
@@ -64,6 +66,8 @@ void traildb_coo_repr(const char* fname, const char* fieldname,
                         col_idx_array[row_idx] = cidx;
                         row_idx += 1;
                     }
+                    uids[row_idx] = (uint64_t)(*tdb_get_uuid(db, i));
+                    timestamps[row_idx] = event->timestamp;
                     break;
                 }
             }
