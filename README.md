@@ -11,19 +11,19 @@ Many tasks especially in data analytics and machine learning domain make use of 
 data structures to support the input of high dimensional data. This project was started
 to get an efficient homogen sparse data processing pipeline. As of today dask has no
 support for something as an sparse dataframe. We process big amounts of highdimensional data
-on a daily basis at (datarevenue)[http://datarevenue.com] and our favourite language 
+on a daily basis at [datarevenue](http://datarevenue.com) and our favourite language 
 and ETL framework are python and dask.
 
-# What is traildb?
-(Traildb)[http://traildb.io/]is an amazing log style database. It was released recently 
+# Traildb access?
+[Traildb](http://traildb.io/) is an amazing log style database. It was released recently 
 by AdRoll. It compresses event like data extremly efficient. Furtherfmore it provides a 
 fast C-level api to query it. 
 Traildb has also python bindings but you still might need to iterate over many million 
-of users of trail or even both which has quite some overhead in python. 
-Therefore we provide access to the database in form of SparseFrame objects. Which are 
-fast, efficient and easy to use and do further processing on. ATM index and timestamp
-informations are lost but they will be provided as a pandas MultiIndex handled by the
-SparseFrame in a future release.
+of users/trail or even both which has quite some overhead in python. 
+Therefore sparsity provides high speed access to the database in form of SparseFrame objects. 
+These are fast, efficient and easy to use to do further processing on. 
+*ATM uuid and timestamp informations are lost but they will be provided as a pandas.MultiIndex 
+handled by the SparseFrame in a (very soon) future release.*
 
 ````
 In [1]: from sparsity import SparseFrame
