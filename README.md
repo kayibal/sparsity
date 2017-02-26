@@ -1,27 +1,39 @@
 # Sparsity
 Sparse data processing toolbox. It builds on top of pandas and scipy to provide DataFrame
-like API to work with sparse categorical data. It also provides a extremly fast C level 
+like API to work with sparse categorical data. 
+
+It also provides a extremly fast C level 
 interface to read from traildb databases. This make it a highly performant package to use
 for dataprocessing jobs especially such as log processing and/or clickstream ot click through data. 
+
 In combination with dask it provides support to execute complex operations on 
 a concurrent/distributed level.
 
 # Motivation
 Many tasks especially in data analytics and machine learning domain make use of sparse
-data structures to support the input of high dimensional data. This project was started
-to get an efficient homogen sparse data processing pipeline. As of today dask has no
+data structures to support the input of high dimensional data. 
+
+This project was started
+to build an efficient homogen sparse data processing pipeline. As of today dask has no
 support for something as an sparse dataframe. We process big amounts of highdimensional data
 on a daily basis at [datarevenue](http://datarevenue.com) and our favourite language 
-and ETL framework are python and dask.
+and ETL framework are python and dask. After chaining many function calls on scipy.sparse 
+csr matrices that involved handling of indices and column names to produce a sparse data
+pipeline I decided to start this project.
+
+This package might be especially usefull to you if you have very big amounts of 
+sparse data such as clickstream data, categorical timeseries, log data or similarly sparse data.
 
 # Traildb access?
 [Traildb](http://traildb.io/) is an amazing log style database. It was released recently 
-by AdRoll. It compresses event like data extremly efficient. Furtherfmore it provides a 
+by AdRoll. It compresses event like data extremly efficient. Furthermore it provides a 
 fast C-level api to query it. 
+
 Traildb has also python bindings but you still might need to iterate over many million 
 of users/trail or even both which has quite some overhead in python. 
 Therefore sparsity provides high speed access to the database in form of SparseFrame objects. 
-These are fast, efficient and easy to use to do further processing on. 
+These are fast, efficient and intuitive enough to do further processing on. 
+
 *ATM uuid and timestamp informations are lost but they will be provided as a pandas.MultiIndex 
 handled by the SparseFrame in a (very soon) future release.*
 
@@ -52,7 +64,9 @@ Out[4]: (109626, 37393)
 
 # But wait pandas has SparseDataFrames and SparseSeries
 Pandas has it's own implementation of sparse datastructures. Unfortuantely this structures
-performs quite badly with a groupby sum aggregation which we also often use. Consider 
+performs quite badly with a groupby sum aggregation which we also often use. Furthermore
+ doing a groupby on a pandasSparseDataFrame returns a dense DataFrame. This makes chaining
+  many groupby operations over multiple files cumbersome and less efficient. Consider 
 following example:
 
 ```
