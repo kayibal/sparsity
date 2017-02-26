@@ -8,10 +8,11 @@
 #include "hashtable.h"
 #include <traildb.h>
 #include "traildb_coo.h"
+#include <inttypes.h>
 
 void traildb_coo_repr(const char* fname, const char* fieldname,
                       uint64_t* row_idx_array, uint64_t* col_idx_array,
-                      uint64_t* uids, uint64_t* timestamps){
+                      uint8_t* uids, uint64_t* timestamps){
     int summed = 0;
     tdb_error err;
     const char * db_path = fname;
@@ -64,10 +65,13 @@ void traildb_coo_repr(const char* fname, const char* fieldname,
                     if (summed <=0){
                         row_idx_array[row_idx] = row_idx;
                         col_idx_array[row_idx] = cidx;
+                        timestamps[row_idx] = event->timestamp;
+                        
+                        //uids[row_idx] = malloc(sizeof(uint8_t)*16);
+                        memcpy(&uids[row_idx*16], tdb_get_uuid(db, i), 16);
+                        
                         row_idx += 1;
                     }
-                    uids[row_idx] = (uint64_t)(*tdb_get_uuid(db, i));
-                    timestamps[row_idx] = event->timestamp;
                     break;
                 }
             }

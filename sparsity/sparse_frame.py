@@ -4,11 +4,12 @@ from functools import partial
 import pandas as pd
 import numpy as np
 import datetime as dt
+import uuid
 from functools import reduce
 
 from scipy import sparse
 
-from sparsity import traildb_to_coo
+from sparsity.io import traildb_to_coo
 
 
 class SparseFrame(object):
@@ -132,8 +133,9 @@ class SparseFrame(object):
 
     @classmethod
     def read_traildb(cls, file, field):
-        coo = traildb_to_coo(file, field)
-        return cls(coo.tocsr())
+        uuids, timestamps, coo = traildb_to_coo(file, field)
+        uuids = np.asarray([uuid.UUID(bytes=x.tobytes()) for x in uuids])
+        return cls(coo.tocsr(), index=uuids)
 
 
 

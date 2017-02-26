@@ -9,6 +9,9 @@ for dataprocessing jobs especially such as log processing and/or clickstream ot 
 In combination with dask it provides support to execute complex operations on 
 a concurrent/distributed level.
 
+## Attention
+**Not ready for production**
+
 # Motivation
 Many tasks especially in data analytics and machine learning domain make use of sparse
 data structures to support the input of high dimensional data. 

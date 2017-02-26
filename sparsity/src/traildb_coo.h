@@ -12,5 +12,5 @@
 #include <traildb.h>
 void traildb_coo_repr(const char* fname, const char* fieldname,
                       uint64_t* row_idx_array, uint64_t* col_idx_array,
-                      uint64_t* uids, uint64_t* timestamps);
+                      uint8_t* uids, uint64_t* timestamps);
 #endif /* traildb_coo_h */

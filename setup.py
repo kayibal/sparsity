@@ -3,8 +3,8 @@ from distutils.core import setup, Extension
 
 from Cython.Build import cythonize
 
-ext = Extension("sparsity.traildb",
-                        ['sparsity/traildb.pyx',
+ext = Extension("sparsity._traildb",
+                        ['sparsity/_traildb.pyx',
                          'sparsity/src/traildb_coo.c',
                          'sparsity/src/hashtable.c',
                          'sparsity/src/linklist.c'],

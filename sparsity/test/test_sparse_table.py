@@ -9,7 +9,7 @@ import pytest
 
 #from dask.async import get_sync
 #import dask.dataframe as dd
-from sparsity import SparseFrame, csr_one_hot_series  #, sparse_aggregate_cs
+from sparsity import SparseFrame, csr_one_hot_series #, sparse_aggregate_cs
 
 # 2017 starts with a sunday
 @pytest.fixture()
@@ -117,6 +117,10 @@ def test_csr_one_hot_series(sample_data):
     res = SparseFrame(one_hot).groupby(np.tile(np.arange(7),
                                             7)).data.todense()
     assert np.all(res == np.identity(7) * 7)
+
+def test_read_traildb(testdb):
+    res = SparseFrame.read_traildb(testdb, 'action')
+    pass
 
 # def test_aggregate(testdata):
 #     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',

@@ -1,25 +1,20 @@
-import os
-
 import numpy as np
-import pytest
 
-import sparsity
-from sparsity import traildb_to_coo
-from sparsity.traildb import traildb_coo_repr_func
-
-@pytest.fixture()
-def testdb():
-    return os.path.join(sparsity.__path__[0], 'test/tiny.tdb')
+from sparsity._traildb import traildb_coo_repr_func
+from sparsity.io import traildb_to_coo
 
 def test_coo_func(testdb):
     r_idx = np.zeros(9, dtype=np.uint64)
     c_idx = np.zeros(9, dtype=np.uint64)
-    traildb_coo_repr_func(testdb.encode(), b"username", r_idx, c_idx)
+    uuids = np.zeros((9,16), dtype=np.uint8)
+    timestamps = np.zeros(9, dtype=np.uint64)
+    traildb_coo_repr_func(testdb.encode(), b"username", r_idx, c_idx, uuids,
+                          timestamps)
     assert all(r_idx == np.arange(9))
     assert all(c_idx[:3] == 0)
     assert all(c_idx[3:6] == 1)
     assert all(c_idx[6:] == 2)
 
-def test_db_to_coo(testdb):
-    coo_matrix = traildb_to_coo(testdb, "action")
-    pass
+# def test_db_to_coo(testdb):
+#     res = traildb_to_coo(testdb, "action")
+#     pass
