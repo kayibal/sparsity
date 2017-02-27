@@ -17,23 +17,30 @@ class SparseFrame(object):
     Simple sparse table based on scipy.sparse.csr_matrix
     """
 
-    __slots__ = ["index", "columns", "data", "shape"]
+    __slots__ = ["_index", "columns", "data", "shape", "_multi_index"]
 
     def __init__(self, data, index=None, columns=None, **kwargs):
+        self._multi_index = False
+
         if len(data.shape) != 2:
             raise ValueError("Only two dimensional data supported")
 
         if index is None:
-            self.index = np.arange(data.shape[0])
+            self._index = np.arange(data.shape[0])
         else:
             assert len(index) == data.shape[0]
-            self.index = index
+            self._index = np.asarray(index)
+
+        if isinstance(index, pd.MultiIndex):
+            # make proxy index
+            self._multi_index = True
+            self._index = pd.DataFrame(np.arange(len(index)), index=index)
 
         if columns is None:
             self.columns = np.arange(data.shape[1])
         else:
             assert len(columns) == data.shape[1]
-            self.columns = columns
+            self.columns = np.asarray(columns)
 
         if not sparse.isspmatrix_csr(data):
             self.data = sparse.csr_matrix(data, **kwargs)
@@ -42,7 +49,14 @@ class SparseFrame(object):
 
         self.shape = data.shape
 
-    def groupby(self, by=None):
+    @property
+    def index(self):
+        if not self._multi_index:
+            return self._index
+        else:
+            return self._index.index.values
+
+    def groupby(self, by=None, level=0):
         """
         simple groupby operation using sparse matrix multiplication. Expects result to be sparse aswell
         :param by: (optional) alternative index
@@ -52,7 +66,11 @@ class SparseFrame(object):
             assert len(by) == self.data.shape[0]
             by = np.array(by)
         else:
-            by = self.index
+            if level:
+                by = self._index if not self._multi_index else \
+                    self._multi_index.get_level_values(level).values
+            else:
+                by = self.index
         group_idx = by.argsort()
         gm = _create_group_matrix(by[group_idx])
         grouped_data = self.data[group_idx, :].T.dot(gm).T
@@ -78,7 +96,7 @@ class SparseFrame(object):
                 data, new_index = _matrix_join(self.data.T.tocsr(), other.data.T.tocsr(),
                                                np.asarray(self.columns), np.asarray(other.columns))
                 res = SparseFrame(data.T.to_csr(),
-                                  index=np.concatenate([self.index,other.index]),
+                                  index=np.concatenate([self.index, other.index]),
                                   columns=new_index)
         elif axis == 1:
             if np.all(self.index == other.index):
@@ -87,16 +105,16 @@ class SparseFrame(object):
                 res = SparseFrame(data, index=self.index, columns=columns)
             else:
                 data, new_index = _matrix_join(self.data, other.data,
-                                           np.asarray(self.index), np.asarray(other.index))
+                                               np.asarray(self.index), np.asarray(other.index))
                 res = SparseFrame(data,
                                   index=new_index,
                                   columns=np.concatenate([self.columns,other.columns]))
         return res
 
     def sort_index(self):
-        passive_sort_idx = np.argsort(self.index)
+        passive_sort_idx = np.argsort(self._index)
         data = self.data[passive_sort_idx]
-        index = self.index[passive_sort_idx]
+        index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
     def add(self, other):
@@ -120,22 +138,30 @@ class SparseFrame(object):
         return self.head(5).to_string()
 
     def head(self, n=5):
-        n = min(n, len(self.index))
-        return pd.DataFrame(self.data[:n].todense(), index=self.index[:n], columns=self.columns)
+        n = min(n, len(self._index))
+        if self.multi_index:
+            return pd.DataFrame(self.data[:n].todense(),
+                                index=self._index.index[:n],
+                                columns=self.columns)
+        else:
+            return pd.DataFrame(self.data[:n].todense(),
+                                index=self.index[:n],
+                                columns=self.columns)
 
     @classmethod
     def concat(cls, tables, axis=0):
-        tables = list(tables)
-        if len(tables) <= 1:
-            return tables[0]
         func = partial(SparseFrame.join, axis=axis)
         return reduce(func, tables)
 
     @classmethod
-    def read_traildb(cls, file, field):
+    def read_traildb(cls, file, field, ts_unit='s'):
         uuids, timestamps, coo = traildb_to_coo(file, field)
-        uuids = np.asarray([uuid.UUID(bytes=x.tobytes()) for x in uuids])
-        return cls(coo.tocsr(), index=uuids)
+        uuids = np.asarray([uuid.UUID(bytes=x.tobytes()) for x in
+                            uuids])
+        index = pd.MultiIndex.from_arrays \
+            ([pd.CategoricalIndex(uuids),pd.to_datetime(timestamps, unit=ts_unit,)],
+             names=('uuid', 'timestamp'))
+        return cls(coo.tocsr(), index=index)
 
 
 
