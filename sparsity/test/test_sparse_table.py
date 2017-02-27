@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 #from dask.async import get_sync
-#import dask.dataframe as dd
+#import dask._dataframe as dd
 from sparsity import SparseFrame, csr_one_hot_series #, sparse_aggregate_cs
 
 # 2017 starts with a sunday
@@ -27,18 +27,18 @@ def test_groupby():
     index = np.tile(np.arange(10), 10)
     data = np.vstack([np.identity(10) for i in range(10)])
     t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
-    res = t.groupby().data.todense()
+    res = t.groupby()._data.todense()
     assert np.all(res == (np.identity(10)*10))
 
 
 def test_simple_join():
     t = SparseFrame(np.identity(10))
 
-    res1 = t.join(t, axis=0).data.todense()
+    res1 = t.join(t, axis=0)._data.todense()
     correct = np.vstack([np.identity(10), np.identity(10)])
     assert np.all(res1 == correct)
 
-    res2 = t.join(t, axis=1).data.todense()
+    res2 = t.join(t, axis=1)._data.todense()
     correct = np.hstack([np.identity(10), np.identity(10)])
     assert np.all(res2 == correct)
 
@@ -58,10 +58,10 @@ def test_complex_join():
     left = SparseFrame(left_dense, index=index)
     right = SparseFrame(right_dense, index=np.arange(5,10))
 
-    res = left.join(right, axis=1).sort_index().data.todense()
+    res = left.join(right, axis=1).sort_index()._data.todense()
     assert np.all(correct == res)
 
-    # res = right.join(left, axis=1).data.todense()
+    # res = right.join(left, axis=1)._data.todense()
     # assert np.all(correct == res)
 
 
@@ -71,7 +71,7 @@ def test_mutually_exclusive_join():
     correct = np.vstack([np.hstack([np.identity(5), np.zeros((5,5))]),
                          np.hstack([np.zeros((5, 5)), np.identity(5)])])
     res = left.join(right, axis=1)
-    assert np.all(res.data.todense() == correct)
+    assert np.all(res._data.todense() == correct)
 
 
 def test_add_total_overlap():
@@ -107,7 +107,7 @@ def test_add_total_overlap():
 
     res = first.add(second).add(third).sort_index()
 
-    assert np.all(res.data.todense() == correct)
+    assert np.all(res._data.todense() == correct)
 
 
 def test_csr_one_hot_series(sample_data):
@@ -115,12 +115,29 @@ def test_csr_one_hot_series(sample_data):
                  'Thursday', 'Friday', 'Saturday']
     one_hot = csr_one_hot_series(sample_data(49)["weekday"], categories)
     res = SparseFrame(one_hot).groupby(np.tile(np.arange(7),
-                                            7)).data.todense()
+                                            7))._data.todense()
     assert np.all(res == np.identity(7) * 7)
+
 
 def test_read_traildb(testdb):
     res = SparseFrame.read_traildb(testdb, 'action')
+    assert res.shape == (9,3)
+
+
+def test_groupby_traildb(testdb):
     pass
+
+
+def test_add_traildb(testdb):
+    with pytest.raises(NotImplementedError) as exc_info:
+        simple = SparseFrame.read_traildb(testdb, 'action')
+        doubled = simple.add(simple)
+    #assert doubled._data == simple._data*2
+
+
+def test_subtract_traildb(testdb):
+    pass
+
 
 # def test_aggregate(testdata):
 #     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
@@ -134,5 +151,5 @@ def test_read_traildb(testdb):
 #                                  slice_date=dt.date(2017,12,30),
 #                                  agg_bin=(0,356),
 #                                  categorical_col="weekday", get=get_sync)
-#     assert np.all(np.identity(7) * 51 == result.data.todense())
+#     assert np.all(np.identity(7) * 51 == result._data.todense())
 

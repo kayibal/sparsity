@@ -7,54 +7,58 @@ import datetime as dt
 import uuid
 from functools import reduce
 
+from pandas.core.common import _default_index
+from pandas.indexes.base import _ensure_index
 from scipy import sparse
 
 from sparsity.io import traildb_to_coo
-
 
 class SparseFrame(object):
     """
     Simple sparse table based on scipy.sparse.csr_matrix
     """
 
-    __slots__ = ["_index", "columns", "data", "shape", "_multi_index"]
+    __slots__ = ["_index", "_columns", "_data", "shape", "_multi_index"]
 
     def __init__(self, data, index=None, columns=None, **kwargs):
-        self._multi_index = False
-
         if len(data.shape) != 2:
             raise ValueError("Only two dimensional data supported")
+        N,K = data.shape
 
         if index is None:
-            self._index = np.arange(data.shape[0])
+            self._index = _default_index(N)
         else:
             assert len(index) == data.shape[0]
-            self._index = np.asarray(index)
+            self._index = _ensure_index(index)
 
-        if isinstance(index, pd.MultiIndex):
-            # make proxy index
-            self._multi_index = True
-            self._index = pd.DataFrame(np.arange(len(index)), index=index)
 
         if columns is None:
-            self.columns = np.arange(data.shape[1])
+            self._columns = _default_index(K)
         else:
             assert len(columns) == data.shape[1]
-            self.columns = np.asarray(columns)
+            self._columns = _ensure_index(columns)
 
         if not sparse.isspmatrix_csr(data):
-            self.data = sparse.csr_matrix(data, **kwargs)
+            self._data = sparse.csr_matrix(data, **kwargs)
         else:
-            self.data = data
+            self._data = data
 
         self.shape = data.shape
 
+
+    def _get_axis(self, axis):
+        if axis == 0:
+            return self._index
+        if axis == 1:
+            return self._columns
+
     @property
     def index(self):
-        if not self._multi_index:
-            return self._index
-        else:
-            return self._index.index.values
+        return self._index
+
+    @property
+    def columns(self):
+        return self._columns
 
     def groupby(self, by=None, level=0):
         """
@@ -63,73 +67,83 @@ class SparseFrame(object):
         :return:
         """
         if by is not None and by is not "index":
-            assert len(by) == self.data.shape[0]
+            assert len(by) == self._data.shape[0]
             by = np.array(by)
         else:
-            if level:
-                by = self._index if not self._multi_index else \
-                    self._multi_index.get_level_values(level).values
+            if level and isinstance(self._index, pd.MultiIndex):
+                by = self._multi_index.get_level_values(level).values
+            elif level:
+                raise ValueError("Connot use level in a non MultiIndex Frame")
             else:
-                by = self.index
+                by = self.index.values
         group_idx = by.argsort()
         gm = _create_group_matrix(by[group_idx])
-        grouped_data = self.data[group_idx, :].T.dot(gm).T
-        return SparseFrame(grouped_data, index=np.unique(by), columns=self.columns)
+        grouped_data = self._data[group_idx, :].T.dot(gm).T
+        return SparseFrame(grouped_data, index=np.unique(by), columns=self._columns)
 
-    def join(self, other, axis=0):
+    def join(self, other, axis=0, level=None):
         """
         Can be used to stack two tables with identical inidizes
         :param other: another CSRTable or compatible datatype
         :param axis:
         :return:
         """
+        if isinstance(self._index, pd.MultiIndex)\
+            or isinstance(other._index, pd.MultiIndex):
+            raise NotImplementedError()
         if not isinstance(other, SparseFrame):
             other = SparseFrame(other)
         if axis not in set([0, 1]):
             raise ValueError("axis mut be either 0 or 1")
         if axis == 0:
-            if np.all(other.columns == self.columns):
-                data = sparse.vstack([self.data, other.data])
+            if np.all(other._columns.values == self._columns.values):
+                # take short path if join axes are identical
+                data = sparse.vstack([self._data, other._data])
                 index = np.hstack([self.index, other.index])
-                res = SparseFrame(data, index=index, columns=self.columns)
+                res = SparseFrame(data, index=index, columns=self._columns)
             else:
-                data, new_index = _matrix_join(self.data.T.tocsr(), other.data.T.tocsr(),
-                                               np.asarray(self.columns), np.asarray(other.columns))
+                data, new_index = _matrix_join(self._data.T.tocsr(), other._data.T.tocsr(),
+                                               np.asarray(self._columns), np.asarray(other._columns))
                 res = SparseFrame(data.T.to_csr(),
                                   index=np.concatenate([self.index, other.index]),
                                   columns=new_index)
         elif axis == 1:
-            if np.all(self.index == other.index):
-                data = sparse.hstack([self.data, other.data])
-                columns = np.hstack([self.columns, other.columns])
+            if np.all(self.index.values == other.index.values):
+                # take short path if join axes are identical
+                data = sparse.hstack([self._data, other._data])
+                columns = np.hstack([self._columns, other._columns])
                 res = SparseFrame(data, index=self.index, columns=columns)
             else:
-                data, new_index = _matrix_join(self.data, other.data,
-                                               np.asarray(self.index), np.asarray(other.index))
+                data, new_index= _matrix_join(self._data, other._data,
+                                   np.asarray(self.index), np.asarray(other.index))
                 res = SparseFrame(data,
                                   index=new_index,
-                                  columns=np.concatenate([self.columns,other.columns]))
+                                  columns=np.concatenate([self._columns, other._columns]))
         return res
 
     def sort_index(self):
         passive_sort_idx = np.argsort(self._index)
-        data = self.data[passive_sort_idx]
+        data = self._data[passive_sort_idx]
         index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
-    def add(self, other):
-        assert np.all(self.columns == other.columns)
-        data, index = _aligned_csr_elop(self.data, other.data,
-                                        np.asarray(self.index),
-                                        np.asarray(other.index))
-        res = SparseFrame(data, index=index, columns = self.columns)
+    def add(self, other, how='outer'):
+        if isinstance(self._index, pd.MultiIndex)\
+            or isinstance(other._index, pd.MultiIndex):
+            raise NotImplementedError()
+        assert np.all(self._columns == other.columns)
+        data, new_idx = _aligned_csr_elop(self._data, other._data,
+                                          _safe_index(self.index),
+                                          _safe_index(other.index))
+        # new_idx = self._index.join(other.index, how=how)
+        res = SparseFrame(data, index=new_idx, columns = self._columns)
         return res
 
 
     def __sizeof__(self):
         return super().__sizeof__() + self.index.nbytes + \
-               self.columns.nbytes + self.data.data.nbytes + \
-               self.data.indptr.nbytes + self.data.indices.nbytes
+               self._columns.nbytes + self._data.data.nbytes + \
+               self._data.indptr.nbytes + self._data.indices.nbytes
 
     def _align_axis(self):
         raise NotImplementedError()
@@ -139,14 +153,12 @@ class SparseFrame(object):
 
     def head(self, n=5):
         n = min(n, len(self._index))
-        if self.multi_index:
-            return pd.DataFrame(self.data[:n].todense(),
-                                index=self._index.index[:n],
-                                columns=self.columns)
-        else:
-            return pd.DataFrame(self.data[:n].todense(),
-                                index=self.index[:n],
-                                columns=self.columns)
+        return pd.DataFrame(self._data[:n].todense(),
+                            index=self._index[:n],
+                            columns=self._columns)
+
+    def _slice(self, sliceobj):
+        return SparseFrame(self._data[sliceobj,:], index=self.index[sliceobj])
 
     @classmethod
     def concat(cls, tables, axis=0):
@@ -185,12 +197,13 @@ def _aligned_csr_elop(a, b, a_idx, b_idx, op='_plus_'):
 
     # calc result & result index
     added = a[intersect_idx_a]._binopt(b[intersect_idx_b], op=op)
-    res = sparse.vstack([added, a[~intersect_idx_a], b[~intersect_idx_b]])
-    index = np.concatenate([a_idx[intersect_idx_a], a_idx[~intersect_idx_a], b_idx[~intersect_idx_b]])
+    res = sparse.vstack([a[~intersect_idx_a], added, b[~intersect_idx_b]])
+    index = np.concatenate([a_idx[~intersect_idx_a],a_idx[intersect_idx_a],
+                            b_idx[~intersect_idx_b]])
     return res, index
 
 
-def _matrix_join(a,b, a_idx, b_idx):
+def _matrix_join(a,b, a_idx, b_idx, how='outer'):
     # align data
     sort_idx = np.argsort(a_idx)
     a = a[sort_idx]
@@ -207,17 +220,18 @@ def _matrix_join(a,b, a_idx, b_idx):
     # calc result & result index
     joined_data = []
     joined_idx = []
-    if len(intersection) > 0:
-        passive_idx_a = np.in1d(a_idx, intersection).nonzero()[0]
-        passive_idx_b = np.in1d(b_idx, intersection).nonzero()[0]
-        joined_data.append(sparse.hstack([a[passive_idx_a], b[passive_idx_b]]))
-        joined_idx.append(a_idx[passive_idx_a])
 
     if len(only_a) > 0:
         passive_idx_a = np.in1d(a_idx, only_a).nonzero()[0]
         only_left = a[passive_idx_a]
         only_left._shape = (len(passive_idx_a), a.shape[1] + b.shape[1])
         joined_data.append(only_left)
+        joined_idx.append(a_idx[passive_idx_a])
+
+    if len(intersection) > 0:
+        passive_idx_a = np.in1d(a_idx, intersection).nonzero()[0]
+        passive_idx_b = np.in1d(b_idx, intersection).nonzero()[0]
+        joined_data.append(sparse.hstack([a[passive_idx_a], b[passive_idx_b]]))
         joined_idx.append(a_idx[passive_idx_a])
 
     if len(only_b) > 0:
@@ -289,6 +303,12 @@ def _sparse_groupby_sum_cs(cs, group_col, categorical_col, categories):
     one_hot = csr_one_hot_series(cs[categorical_col], categories)
     table = SparseFrame(one_hot, columns=categories, index=cs[group_col])
     return table.groupby()
+
+def _safe_index(index):
+    if isinstance(index, pd.MultiIndex):
+        return index.map(hash)
+    else:
+        return index.values
 
 
 
