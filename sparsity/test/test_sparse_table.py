@@ -43,23 +43,21 @@ def test_simple_join():
     assert np.all(res2 == correct)
 
 
-def test_complex_join():
-    left_dense = (np.identity(10) + np.identity(10)[:,::-1])*55
-    right_dense = np.zeros((5,5))
-    right_dense[2,:] = (np.arange(5)+1)*10
-    right_dense[:,2] = (np.arange(5)+1)*10
+def test_complex_join(complex_example):
+    first, second, third = complex_example
+    correct = pd.DataFrame(first._data.todense(),
+                           index=first.index)\
+                .join(pd.DataFrame(second._data.todense(),
+                                   index=second.index), how='left',
+                                   rsuffix='_second')\
+                .join(pd.DataFrame(third._data.todense(),
+                                   index=third.index), how='left',
+                                   rsuffix = '_third')\
+                .sort_index().fillna(0)
 
-    correct = np.vstack([np.hstack([left_dense[:5, :], np.zeros((5, 5))]),
-                         np.hstack([left_dense[5:, :], right_dense])])
-
-    index = np.arange(10)
-    np.random.shuffle(index)
-    left_dense = left_dense[index]
-    left = SparseFrame(left_dense, index=index)
-    right = SparseFrame(right_dense, index=np.arange(5,10))
-
-    res = left.join(right, axis=1).sort_index()._data.todense()
-    assert np.all(correct == res)
+    res = first.join(second, axis=1).join(third, axis=1)\
+        .sort_index()._data.todense()
+    assert np.all(correct.values == res)
 
     # res = right.join(left, axis=1)._data.todense()
     # assert np.all(correct == res)
@@ -73,19 +71,35 @@ def test_mutually_exclusive_join():
     res = left.join(right, axis=1)
     assert np.all(res._data.todense() == correct)
 
+def test_iloc():
+    sf = SparseFrame(np.identity(5))
 
-def test_add_total_overlap():
+    assert np.all(sf.iloc[:2]._data.todense() == np.identity(5)[:2])
+    assert np.all(sf.iloc[[3,4]]._data.todense() == np.identity(5)[[3,4]])
+    assert np.all(sf.iloc[3]._data.todense() == np.identity(5)[3])
+
+def test_loc():
+    sf = SparseFrame(np.identity(5), index=list("ABCDE"))
+
+    assert np.all(sf.loc[:'B']._data.todense() == np.identity(5)[:2])
+
+    sf = SparseFrame(np.identity(5), pd.date_range("2016-10-01", periods=5))
+    assert np.all(sf.loc['2016-10-01':"2016-10-03"]._data.todense() ==
+                  np.identity(5)[:3])
+    #assert np.all(sf.loc[['D', 'E']]._data.todense() == np.identity(5)[[3,
+    # 4]])
+    # assert np.all(sf.loc['D']._data.todense() == np.identity(5)[3])
+
+@pytest.fixture()
+def complex_example():
     first = np.identity(10)
-    second = np.zeros((4,10))
-    third =  np.zeros((4,10))
+    second = np.zeros((4, 10))
+    third = np.zeros((4, 10))
     np.fill_diagonal(second, 10)
     np.fill_diagonal(third, 20)
-    second = second[:,[4,5,0,1,2,3,6,7,8,9]]
-    third = third[:,np.asarray([4,5,6,7,8,9,0,1,2,3])]
-
-    correct = first.copy()
-    correct[2:6,:] += second
-    correct[6:, :] += third
+    # place diagonals at correct start index
+    second = second[:, [4, 5, 0, 1, 2, 3, 6, 7, 8, 9]]
+    third = third[:, np.asarray([4, 5, 6, 7, 8, 9, 0, 1, 2, 3])]
 
     shuffle_idx = np.arange(10)
     np.random.shuffle(shuffle_idx)
@@ -97,13 +111,20 @@ def test_add_total_overlap():
     np.random.shuffle(shuffle_idx)
 
     second = SparseFrame(second[shuffle_idx], index=np.arange(2,
-                                                           6)[shuffle_idx])
+                                                              6)[shuffle_idx])
 
     shuffle_idx = np.arange(4)
     np.random.shuffle(shuffle_idx)
 
     third = SparseFrame(third[shuffle_idx], index=np.arange(6,
-                                                         10)[shuffle_idx])
+                                                            10)[shuffle_idx])
+    return first, second, third
+
+def test_add_total_overlap(complex_example):
+    first, second, third = complex_example
+    correct = first.sort_index()._data.todense()
+    correct[2:6, :] += second.sort_index()._data.todense()
+    correct[6:, :] += third.sort_index()._data.todense()
 
     res = first.add(second).add(third).sort_index()
 

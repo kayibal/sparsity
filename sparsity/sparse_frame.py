@@ -12,13 +12,15 @@ from pandas.indexes.base import _ensure_index
 from scipy import sparse
 
 from sparsity.io import traildb_to_coo
+from sparsity.indexing import _CsrILocationIndexer, _CsrLocIndexer
 
 class SparseFrame(object):
     """
     Simple sparse table based on scipy.sparse.csr_matrix
     """
 
-    __slots__ = ["_index", "_columns", "_data", "shape", "_multi_index"]
+    __slots__ = ["_index", "_columns", "_data", "shape", "_multi_index",
+                 'ndim', 'iloc', 'loc']
 
     def __init__(self, data, index=None, columns=None, **kwargs):
         if len(data.shape) != 2:
@@ -28,14 +30,14 @@ class SparseFrame(object):
         if index is None:
             self._index = _default_index(N)
         else:
-            assert len(index) == data.shape[0]
+            assert len(index) == N
             self._index = _ensure_index(index)
 
 
         if columns is None:
             self._columns = _default_index(K)
         else:
-            assert len(columns) == data.shape[1]
+            assert len(columns) == K
             self._columns = _ensure_index(columns)
 
         if not sparse.isspmatrix_csr(data):
@@ -44,6 +46,11 @@ class SparseFrame(object):
             self._data = data
 
         self.shape = data.shape
+
+        # register indexers
+        self.ndim = 2
+        self.iloc = _CsrILocationIndexer(self, 'iloc')
+        self.loc = _CsrLocIndexer(self, 'loc')
 
 
     def _get_axis(self, axis):
@@ -127,7 +134,7 @@ class SparseFrame(object):
         index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
-    def add(self, other, how='outer'):
+    def add(self, other):
         if isinstance(self._index, pd.MultiIndex)\
             or isinstance(other._index, pd.MultiIndex):
             raise NotImplementedError()
@@ -164,6 +171,14 @@ class SparseFrame(object):
     def concat(cls, tables, axis=0):
         func = partial(SparseFrame.join, axis=axis)
         return reduce(func, tables)
+
+    def _ixs(self, key, axis=0):
+        if axis != 0:
+            raise NotImplementedError()
+        new_idx = self.index[key]
+        if not isinstance(new_idx, pd.Index):
+            new_idx = [new_idx]
+        return SparseFrame(self._data[key,:], index=new_idx)
 
     @classmethod
     def read_traildb(cls, file, field, ts_unit='s'):
