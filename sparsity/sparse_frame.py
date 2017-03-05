@@ -181,14 +181,30 @@ class SparseFrame(object):
         return SparseFrame(self._data[key,:], index=new_idx)
 
     @classmethod
-    def read_traildb(cls, file, field, ts_unit='s'):
+    def read_traildb(cls, file, field, ts_unit='s', index='timestamp'):
         uuids, timestamps, coo = traildb_to_coo(file, field)
         uuids = np.asarray([uuid.UUID(bytes=x.tobytes()) for x in
                             uuids])
-        index = pd.MultiIndex.from_arrays \
-            ([pd.CategoricalIndex(uuids),pd.to_datetime(timestamps, unit=ts_unit,)],
-             names=('uuid', 'timestamp'))
-        return cls(coo.tocsr(), index=index)
+        if index == 'both':
+            index = pd.MultiIndex.from_arrays \
+                ([pd.CategoricalIndex(uuids),pd.to_datetime(timestamps, unit=ts_unit,)],
+                 names=('uuid', 'timestamp'))
+            remaining_col = None
+        if index == 'timestamp':
+            index = timestamps
+            remaining_col = ('uuid', uuids)
+        if index == 'uuids':
+            index == uuids
+            remaining_col = ('timestamp', timestamps)
+        res = cls(coo.tocsr(), index=index)
+        if remaining_col:
+            res.__setitem__(*remaining_col)
+
+    def __setitem__(self, key, value):
+        csc = self._data.tocsc()
+        new_data = sparse.hstack([csc, sparse.csc_matrix(value.reshape(-1,1))])
+        self._columns.append(pd.Index([key]))
+        self._data = new_data.tocsr()
 
 
 

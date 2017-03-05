@@ -90,6 +90,12 @@ def test_loc():
     # 4]])
     # assert np.all(sf.loc['D']._data.todense() == np.identity(5)[3])
 
+def test_column_assign():
+    sf = SparseFrame(np.identity(5))
+    sf[6] = np.ones(5)
+    correct = np.hstack([np.identity(5), np.ones(5).reshape(-1,1)])
+    assert np.all(correct == sf._data.todense())
+
 @pytest.fixture()
 def complex_example():
     first = np.identity(10)
