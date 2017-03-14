@@ -1,8 +1,8 @@
 test: sparsity/traildb.cpython-35m-darwin.so
-	py.test sparsity/test
+	py.test sparsity/test -s
 
-sparsity/traildb.cpython-35m-darwin.so: sparsity/traildb.pyx
+sparsity/traildb.cpython-35m-darwin.so: sparsity/_traildb.pyx
 	python setup.py build_ext --inplace
 
 clean:
-	rm sparsity/traildb.c sparsity/traildb.cpython-35m-darwin.so
+	rm -f sparsity/traildb.c sparsity/_traildb.cpython-35m-darwin.so

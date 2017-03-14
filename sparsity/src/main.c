@@ -36,13 +36,7 @@ int main(int argc, const char * argv[]) {
     int i;
     for (i=0; i < num_events; i++){
         char str[37] = {};
-        sprintf(str,
-                "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                uids[i][0], uids[i][1], uids[i][2], uids[i][3], uids[i][4], uids[i][5], uids[i][6],
-                uids[i][7], uids[i][8], uids[i][9], uids[i][10], uids[i][11], uids[i][12], uids[i][13],
-                uids[i][14], uids[i][15]
-                );
-        printf("uuid: %s\n", str);
+
         printf("row_idx: %" PRIu64 "\n", row_idx_array[i]);
         printf("col_idx: %" PRIu64 "\n", col_idx_array[i]);
         printf("ts: %" PRIu64 "\n", timestamps[i]);

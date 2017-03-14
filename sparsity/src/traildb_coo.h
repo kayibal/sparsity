@@ -10,7 +10,8 @@
 #define traildb_coo_h
 #include <stdio.h>
 #include <traildb.h>
-void traildb_coo_repr(const char* fname, const char* fieldname,
+uint64_t traildb_coo_repr(const char* fname, const char* fieldname,
                       uint64_t* row_idx_array, uint64_t* col_idx_array,
-                      uint8_t* uids, uint64_t* timestamps);
+                      uint8_t* uids, uint64_t* timestamps,
+                      char** col_names, uint64_t** str_lens);
 #endif /* traildb_coo_h */

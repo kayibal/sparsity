@@ -17,7 +17,7 @@ def traildb_to_coo(db, fieldname):
     uuids = numpy.zeros((num_events,16), dtype=numpy.uint8)
     timestamps = numpy.zeros(num_events, dtype=numpy.uint64)
 
-    traildb_coo_repr_func(db.encode(), fieldname.encode(), r_idx,
-                          c_idx, uuids, timestamps)
-    return uuids, timestamps, \
+    cols = traildb_coo_repr_func(db.encode(), fieldname.encode(), r_idx,
+                                 c_idx, uuids, timestamps)
+    return uuids, timestamps, cols,\
         sparse.coo_matrix((numpy.ones(num_events), (r_idx, c_idx)))

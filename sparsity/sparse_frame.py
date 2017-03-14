@@ -187,13 +187,13 @@ class SparseFrame(object):
 
     @classmethod
     def read_traildb(cls, file, field, ts_unit='s'):
-        uuids, timestamps, coo = traildb_to_coo(file, field)
+        uuids, timestamps, cols, coo = traildb_to_coo(file, field)
         uuids = np.asarray([uuid.UUID(bytes=x.tobytes()) for x in
                             uuids])
         index = pd.MultiIndex.from_arrays \
             ([pd.CategoricalIndex(uuids),pd.to_datetime(timestamps, unit=ts_unit,)],
              names=('uuid', 'timestamp'))
-        return cls(coo.tocsr(), index=index)
+        return cls(coo.tocsr(), index=index, columns=cols)
 
     def __setitem__(self, key, value):
         csc = self._data.tocsc()
