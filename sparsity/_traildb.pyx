@@ -1,4 +1,3 @@
-from libc.string cimport strcpy
 from libc.stdlib cimport malloc, free
 cimport numpy as np
 from cpython.bytes cimport PyBytes_FromString
