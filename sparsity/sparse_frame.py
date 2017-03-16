@@ -11,7 +11,11 @@ from pandas.core.common import _default_index
 from pandas.indexes.base import _ensure_index
 from scipy import sparse
 
-from sparsity.io import traildb_to_coo
+try:
+    from sparsity.io import traildb_to_coo
+    trail_db = True
+except:
+    trail_db = False
 from sparsity.indexing import _CsrILocationIndexer, _CsrLocIndexer
 
 class SparseFrame(object):
@@ -187,6 +191,8 @@ class SparseFrame(object):
 
     @classmethod
     def read_traildb(cls, file, field, ts_unit='s'):
+        if not trail_db:
+            raise ImportError("Traildb could not be imported")
         uuids, timestamps, cols, coo = traildb_to_coo(file, field)
         uuids = np.asarray([uuid.UUID(bytes=x.tobytes()) for x in
                             uuids])
