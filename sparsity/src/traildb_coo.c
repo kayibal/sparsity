@@ -6,7 +6,6 @@
 //  Copyright © 2017 Alan Höng. All rights reserved.
 //
 #include "hashtable.h"
-#include <traildb.h>
 #include "traildb_coo.h"
 #include <inttypes.h>
 
