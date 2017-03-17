@@ -201,6 +201,33 @@ class SparseFrame(object):
              names=('uuid', 'timestamp'))
         return cls(coo.tocsr(), index=index, columns=cols)
 
+    @classmethod
+    def from_df(cls, df, column, categories, dtype='f8', index_col=None):
+        """Transform a pandas.Series into a sparse matrix.
+            Works by one-hot-encoding for the given categories
+            """
+        s = df[column]
+        cat = pd.Categorical(s, np.asarray(categories))
+
+        codes = cat.codes
+        n_features = len(cat.categories)
+        n_samples = codes.size
+        mask = codes != -1
+        if np.any(~mask):
+            raise ValueError("unknown categorical features present %s "
+                             "during transform." % np.unique(s[~mask]))
+        row_indices = np.arange(n_samples, dtype=np.int32)
+        col_indices = codes
+        data = np.ones(row_indices.size)
+        data = sparse.coo_matrix((data, (row_indices, col_indices)),
+                                 shape=(n_samples, n_features),
+                                 dtype=dtype).tocsr()
+        if not isinstance(index_col, list):
+            new_index = df[index_col] if index_col else df.index
+        else:
+            new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
+        return cls(data, index=new_index, columns=cat.categories.values)
+
     def __setitem__(self, key, value):
         csc = self._data.tocsc()
         val = np.hstack([value, [0]]).reshape(-1,1)
@@ -258,27 +285,6 @@ def _create_group_matrix(group_idx, dtype='f8'):
                              dtype=dtype).tocsr()
 
 
-def csr_one_hot_series(s, categories, dtype='f8'):
-    """Transform a pandas.Series into a sparse matrix.
-    Works by one-hot-encoding for the given categories
-    """
-    cat = pd.Categorical(s, np.asarray(categories))
-
-    codes = cat.codes
-    n_features = len(cat.categories)
-    n_samples = codes.size
-    mask = codes != -1
-    if np.any(~mask):
-        raise ValueError("unknown categorical features present %s "
-                         "during transform." % np.unique(s[~mask]))
-    row_indices = np.arange(n_samples, dtype=np.int32)
-    col_indices = codes
-    data = np.ones(row_indices.size)
-    return sparse.coo_matrix((data, (row_indices, col_indices)),
-                             shape=(n_samples, n_features),
-                             dtype=dtype).tocsr()
-
-
 def sparse_aggregate_cs(raw, slice_date, agg_bin, categories,
                         id_col="id", categorical_col="pageId", **kwargs):
     """aggregates clickstream data using sparse data structures"""
@@ -299,8 +305,8 @@ def _sparse_groupby_sum_cs(cs, group_col, categorical_col, categories):
     """transform a dask partition into a bagged sparse matrix"""
     if isinstance(categories, str):
         categories = pd.read_hdf(categories, "/df")
-    one_hot = csr_one_hot_series(cs[categorical_col], categories)
-    table = SparseFrame(one_hot, columns=categories, index=cs[group_col])
+    table = SparseFrame.from_df(cs, categorical_col, categories,
+                                index_col=group_col)
     return table.groupby()
 
 

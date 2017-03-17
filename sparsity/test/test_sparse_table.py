@@ -9,7 +9,7 @@ import pytest
 
 #from dask.async import get_sync
 #import dask.dataframe as dd
-from sparsity import SparseFrame, csr_one_hot_series #, sparse_aggregate_cs
+from sparsity import SparseFrame #csr_one_hot_series #, sparse_aggregate_cs
 
 # 2017 starts with a sunday
 @pytest.fixture()
@@ -140,9 +140,8 @@ def test_add_total_overlap(complex_example):
 def test_csr_one_hot_series(sampledata):
     categories= ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                  'Thursday', 'Friday', 'Saturday']
-    one_hot = csr_one_hot_series(sampledata(49)["weekday"], categories)
-    res = SparseFrame(one_hot).groupby(np.tile(np.arange(7),
-                                            7)).data.todense()
+    res = SparseFrame.from_df(sampledata(49), 'weekday', categories)\
+        .groupby(np.tile(np.arange(7),7)).data.todense()
     assert np.all(res == np.identity(7) * 7)
 
 

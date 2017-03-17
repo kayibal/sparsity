@@ -67,7 +67,7 @@ uint64_t traildb_coo_repr(const char* fname, const char* fieldname,
                         max_col_idx += 1;
                         
                         char* col_name = malloc(sizeof(char)*(len+1));
-                        strlcpy(col_name, val, len+1);
+                        *((char *)memcpy(col_name, val, len+1)) = '\0';
                         total_col_chars += len;
                         list_push_value(cols, col_name);
                         

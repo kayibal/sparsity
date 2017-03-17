@@ -3,8 +3,6 @@ cimport numpy as np
 from cpython.bytes cimport PyBytes_FromString
 np.import_array()
 
-cdef extern from "<traildb.h>":
-    pass
 cdef extern from "stdint.h":
     ctypedef unsigned long long uint64_t
     ctypedef unsigned char uint8_t

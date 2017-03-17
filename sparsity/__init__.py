@@ -1,1 +1,1 @@
-from sparsity.sparse_frame import SparseFrame, csr_one_hot_series
+from sparsity.sparse_frame import SparseFrame
