@@ -168,7 +168,7 @@ class SparseFrame(object):
         raise NotImplementedError()
 
     def __repr__(self, *args, **kwargs):
-        return self.columns.to_string()
+        return pd.DataFrame([], self.columns)
 
     def head(self, n=5):
         n = min(n, len(self._index))
@@ -240,6 +240,17 @@ class SparseFrame(object):
         new_data = sparse.hstack([csc, sparse.csc_matrix(val)])
         self._columns.append(pd.Index([key]))
         self._data = new_data.tocsr()
+
+    def drop_duplicate_idx(self, **kwargs):
+        mask = ~self.index.duplicated(**kwargs)
+        return SparseFrame(self.data[mask], index=self.index.values[mask],
+                           columns=self.columns)
+
+    def dropna(self):
+        mask = np.isnan(self.index.values)
+        new_data = self.data[~mask, :]
+        new_index = self.index.values[~mask]
+        return SparseFrame(new_data, index=new_index, columns=self.columns)
 
     @classmethod
     def read_npz(cls, filename):

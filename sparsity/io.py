@@ -1,14 +1,15 @@
 import numpy as np
 from scipy import sparse
 
-from sparsity._traildb import traildb_coo_repr_func
-
 try:
     from traildb import TrailDB
-except ImportError:
-    traildb = False
+    from sparsity._traildb import traildb_coo_repr_func
+except (ImportError, OSError):
+    TrailDB = False
 
 def traildb_to_coo(db, fieldname):
+    if not TrailDB:
+        raise ImportError("Could not find traildb")
     db_handle = TrailDB(db)
     num_events = db_handle.num_events
     del db_handle

@@ -150,14 +150,11 @@ def test_read_traildb(testdb):
     assert res.shape == (9,3)
 
 
-def test_groupby_traildb(testdb):
-    pass
-
-
 def test_add_traildb(testdb):
     simple = SparseFrame.read_traildb(testdb, 'action')
     doubled = simple.add(simple)
     assert np.all(doubled.data.todense() == simple.data.todense()*2)
+
 
 def test_npz_io(complex_example):
     sf, second, third = complex_example
@@ -167,9 +164,6 @@ def test_npz_io(complex_example):
     assert np.all(loaded.index == sf.index)
     assert np.all(loaded.columns == sf.columns)
     os.remove('/tmp/sparse.npz')
-
-def test_subtract_traildb(testdb):
-    pass
 
 
 # def test_aggregate(testdata):
