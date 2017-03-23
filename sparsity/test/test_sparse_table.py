@@ -166,6 +166,15 @@ def test_npz_io(complex_example):
     os.remove('/tmp/sparse.npz')
 
 
+def test_getitem():
+    sf = SparseFrame(np.identity(10), columns=list('abcdefghij'))
+    assert sf['a'].data.todense()[0] == 1
+    assert sf['j'].data.todense()[9] == 1
+    tmp = sf[['j','a']].data.todense()
+    assert tmp[9, 0] == 1
+    assert tmp[0, 1] == 1
+
+
 # def test_aggregate(testdata):
 #     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
 #                   'Thursday', 'Friday', 'Saturday']

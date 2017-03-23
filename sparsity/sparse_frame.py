@@ -246,6 +246,15 @@ class SparseFrame(object):
         return SparseFrame(self.data[mask], index=self.index.values[mask],
                            columns=self.columns)
 
+    def __getitem__(self, item):
+        if not isinstance(item, (tuple, list)):
+            item = [item]
+        idx = []
+        for key in item:
+            idx.append(self.columns.get_loc(key))
+        return SparseFrame(self.data[:,idx], index=self.index,
+                           columns=[item])
+
     def dropna(self):
         mask = np.isnan(self.index.values)
         new_data = self.data[~mask, :]
