@@ -192,7 +192,9 @@ class SparseFrame(object):
         new_idx = self.index[key]
         if not isinstance(new_idx, pd.Index):
             new_idx = [new_idx]
-        return SparseFrame(self._data[key,:], index=new_idx)
+        return SparseFrame(self._data[key,:],
+                           index=new_idx,
+                           columns=self.columns)
 
     @classmethod
     def read_traildb(cls, file, field, ts_unit='s'):
