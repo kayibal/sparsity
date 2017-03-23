@@ -177,7 +177,9 @@ class SparseFrame(object):
                             columns=self._columns)
 
     def _slice(self, sliceobj):
-        return SparseFrame(self._data[sliceobj,:], index=self.index[sliceobj])
+        return SparseFrame(self._data[sliceobj,:],
+                           index=self.index[sliceobj],
+                           columns=self.columns)
 
     @classmethod
     def concat(cls, tables, axis=0):
