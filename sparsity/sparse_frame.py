@@ -101,7 +101,7 @@ class SparseFrame(object):
         grouped_data = self._data[group_idx, :].T.dot(gm).T
         return SparseFrame(grouped_data, index=np.unique(by), columns=self._columns)
 
-    def join(self, other, axis=0, level=None):
+    def join(self, other, axis=0, how='outer', level=None):
         """
         Can be used to stack two tables with identical inidizes
         :param other: another CSRTable or compatible datatype
@@ -123,7 +123,8 @@ class SparseFrame(object):
                 res = SparseFrame(data, index=index, columns=self._columns)
             else:
                 data, new_index = _matrix_join(self._data.T.tocsr(), other._data.T.tocsr(),
-                                               self._columns, other._columns)
+                                               self._columns, other._columns,
+                                               how=how)
                 res = SparseFrame(data.T.to_csr(),
                                   index=np.concatenate([self.index, other.index]),
                                   columns=new_index)
@@ -135,7 +136,8 @@ class SparseFrame(object):
                 res = SparseFrame(data, index=self.index, columns=columns)
             else:
                 data, new_index= _matrix_join(self._data, other._data,
-                                              self.index, other.index)
+                                              self.index, other.index,
+                                              how=how)
                 res = SparseFrame(data,
                                   index=new_index,
                                   columns=np.concatenate([self._columns, other._columns]))
@@ -165,7 +167,7 @@ class SparseFrame(object):
         raise NotImplementedError()
 
     def __repr__(self, *args, **kwargs):
-        return self.head(5).to_string()
+        return self.columns.to_string()
 
     def head(self, n=5):
         n = min(n, len(self._index))
@@ -206,8 +208,11 @@ class SparseFrame(object):
         """Transform a pandas.Series into a sparse matrix.
             Works by one-hot-encoding for the given categories
             """
-        s = df[column]
-        cat = pd.Categorical(s, np.asarray(categories))
+        if df[column].dtype == pd.Categorical:
+            cat = df[column]
+        else:
+            s = df[column]
+            cat = pd.Categorical(s, np.asarray(categories))
 
         codes = cat.codes
         n_features = len(cat.categories)
