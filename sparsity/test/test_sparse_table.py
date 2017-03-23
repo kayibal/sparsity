@@ -156,9 +156,17 @@ def test_groupby_traildb(testdb):
 
 def test_add_traildb(testdb):
     simple = SparseFrame.read_traildb(testdb, 'action')
-    doubled = simple.add(simple)##
-    # = simple.data.todense()*2)
+    doubled = simple.add(simple)
+    assert np.all(doubled.data.todense() == simple.data.todense()*2)
 
+def test_npz_io(complex_example):
+    sf, second, third = complex_example
+    sf.to_npz('/tmp/sparse.npz')
+    loaded = SparseFrame.read_npz('/tmp/sparse.npz')
+    assert np.all(loaded.data.todense() == sf.data.todense())
+    assert np.all(loaded.index == sf.index)
+    assert np.all(loaded.columns == sf.columns)
+    os.remove('/tmp/sparse.npz')
 
 def test_subtract_traildb(testdb):
     pass

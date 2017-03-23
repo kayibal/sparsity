@@ -9,6 +9,7 @@ from functools import reduce
 
 from pandas.core.common import _default_index
 from pandas.indexes.base import _ensure_index
+from sparsity.io import to_npz, read_npz
 from scipy import sparse
 
 try:
@@ -208,7 +209,7 @@ class SparseFrame(object):
         """Transform a pandas.Series into a sparse matrix.
             Works by one-hot-encoding for the given categories
             """
-        if df[column].dtype == pd.Categorical:
+        if pd.core.common.is_categorical_dtype(df[column]):
             cat = df[column]
         else:
             s = df[column]
@@ -240,6 +241,12 @@ class SparseFrame(object):
         self._columns.append(pd.Index([key]))
         self._data = new_data.tocsr()
 
+    @classmethod
+    def read_npz(cls, filename):
+        return cls(*read_npz(filename))
+
+    def to_npz(self, filename):
+        to_npz(self, filename)
 
 
 def _aligned_csr_elop(a, b, a_idx, b_idx, op='_plus_'):
