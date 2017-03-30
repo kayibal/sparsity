@@ -192,6 +192,13 @@ def test_vstack():
                                 columns=list('XYZWQ'))
         SparseFrame.vstack(frames)
 
+def test_boolean_indexing():
+    sf = SparseFrame(np.identity(5))
+    res = sf.loc[sf.index > 2]
+    assert isinstance(res, SparseFrame)
+    assert res.shape == (2, 5)
+    assert res.index.tolist() == [3,4]
+
 
 # def test_aggregate(testdata):
 #     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',

@@ -69,6 +69,16 @@ class SparseFrame(object):
         if axis == 1:
             return self._columns
 
+    def take(self, idx, axis=0, **kwargs):
+        if axis==0:
+            return SparseFrame(self.data[idx,:],
+                               index=self.index[idx],
+                               columns=self.columns)
+        elif axis==1:
+            return SparseFrame(self.data[:,idx],
+                               index=self.index,
+                               columns=self.columns[idx])
+
     @property
     def index(self):
         return self._index
