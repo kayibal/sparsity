@@ -175,6 +175,24 @@ def test_getitem():
     assert tmp[0, 1] == 1
 
 
+def test_vstack():
+    frames = []
+    data = []
+    for _ in range(10):
+        values = np.identity(5)
+        data.append(values)
+        sf = SparseFrame(values,
+                         columns=list('ABCDE'))
+        frames.append(sf)
+    sf = SparseFrame.vstack(frames)
+    assert np.all(sf.data.todense() == np.vstack(data))
+
+    with pytest.raises(AssertionError):
+        frames[2] = SparseFrame(np.identity(5),
+                                columns=list('XYZWQ'))
+        SparseFrame.vstack(frames)
+
+
 # def test_aggregate(testdata):
 #     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
 #                   'Thursday', 'Friday', 'Saturday']

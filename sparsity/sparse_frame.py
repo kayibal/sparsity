@@ -266,6 +266,16 @@ class SparseFrame(object):
         return SparseFrame(new_data, index=new_index, columns=self.columns)
 
     @classmethod
+    def vstack(self, frames):
+        assert np.all([np.all(frames[0].columns == frame.columns)
+                       for frame in frames]), "Columns don't match"
+        data = list(map(lambda x: x.data, frames))
+        new_idx = np.hstack([f.index for f in frames])
+        return SparseFrame(sparse.vstack(data),
+                           index=new_idx,
+                           columns=frames[0].columns)
+
+    @classmethod
     def read_npz(cls, filename):
         return cls(*read_npz(filename))
 
