@@ -3,6 +3,7 @@ import pytest
 try:
     from sparsity._traildb import traildb_coo_repr_func
     from sparsity.io import traildb_to_coo
+    trail_db = True
 except (ImportError, OSError):
     trail_db = False
 
