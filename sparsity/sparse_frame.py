@@ -19,6 +19,7 @@ except:
     trail_db = False
 from sparsity.indexing import _CsrILocationIndexer, _CsrLocIndexer
 
+
 class SparseFrame(object):
     """
     Simple sparse table based on scipy.sparse.csr_matrix
@@ -58,18 +59,21 @@ class SparseFrame(object):
         self.loc = _CsrLocIndexer(self, 'loc')
 
     def _init_csr(self, csr):
+        """Keep a zero row at the end of the csr matrix for aligns."""
         self._data = sparse.vstack(
             [csr,
              sparse.coo_matrix((1,csr.shape[1])).tocsr()
              ])
 
     def _get_axis(self, axis):
+        """Rudimentary indexing support."""
         if axis == 0:
             return self._index
         if axis == 1:
             return self._columns
 
     def take(self, idx, axis=0, **kwargs):
+        """Return data at integer locations."""
         if axis==0:
             return SparseFrame(self.data[idx,:],
                                index=self.index[idx],
@@ -78,6 +82,11 @@ class SparseFrame(object):
             return SparseFrame(self.data[:,idx],
                                index=self.index,
                                columns=self.columns[idx])
+
+    def _xs(self, key, *args, **kwargs):
+        """Used for label based indexing."""
+        loc = self.index.get_loc(key)
+        return SparseFrame(self.data[loc], index=[key], columns=self.columns)
 
     @property
     def index(self):
@@ -92,8 +101,9 @@ class SparseFrame(object):
         return self._data[:-1,:]
 
     def groupby(self, by=None, level=0):
-        """
-        simple groupby operation using sparse matrix multiplication. Expects result to be sparse aswell
+        """Sparse groupby sum aggregation.
+        Simple groupby operation using sparse matrix multiplication.
+        Expects result to be sparse aswell
         :param by: (optional) alternative index
         :return:
         """
@@ -113,11 +123,22 @@ class SparseFrame(object):
         return SparseFrame(grouped_data, index=np.unique(by), columns=self._columns)
 
     def join(self, other, axis=0, how='outer', level=None):
-        """
-        Can be used to stack two tables with identical inidizes
-        :param other: another CSRTable or compatible datatype
-        :param axis:
-        :return:
+        """ Join two tables along their indices
+
+        Parameters
+        ----------
+        other: sparsity.SparseTable
+            another SparseFrame
+        axis: int
+            along which axis to join
+        how: str
+            one of 'inner', 'outer', 'left', 'right'
+        level: int
+            if Multiindex join using this level
+
+        Returns
+        -------
+            joined: sparsity.SparseFrame
         """
         if isinstance(self._index, pd.MultiIndex)\
             or isinstance(other._index, pd.MultiIndex):
@@ -155,12 +176,28 @@ class SparseFrame(object):
         return res
 
     def sort_index(self):
+        """ Sort table along index
+        Returns
+        -------
+            sorted: sparsity.SparseFrame
+        """
         passive_sort_idx = np.argsort(self._index)
         data = self._data[passive_sort_idx]
         index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
     def add(self, other):
+        """Aligned addition
+        Adds two tables by aligning them first
+
+        Parameters
+        ----------
+        other: sparsity.SparseFrame
+
+        Returns
+        -------
+            added: sparsity.SparseFrame
+        """
         assert np.all(self._columns == other.columns)
         data, new_idx = _aligned_csr_elop(self._data, other._data,
                                           self.index, other.index)
@@ -178,13 +215,16 @@ class SparseFrame(object):
         raise NotImplementedError()
 
     def __repr__(self, *args, **kwargs):
-        return pd.DataFrame([], self.columns)
+        return pd.SparseDataFrame(self.data[[0,-1],:].todense(),
+                                  index=self.index[[0,-1]],
+                                  columns=self.columns)\
+                .__repr__(*args, **kwargs)
 
-    def head(self, n=5):
+    def head(self, n=1):
         n = min(n, len(self._index))
-        return pd.DataFrame(self._data[:n].todense(),
-                            index=self._index[:n],
-                            columns=self._columns)
+        return pd.SparseDataFrame(self.data[[0],:].todense(),
+                                  index=self.index[[0]],
+                                  columns=self.columns)
 
     def _slice(self, sliceobj):
         return SparseFrame(self._data[sliceobj,:],
@@ -245,6 +285,7 @@ class SparseFrame(object):
         if not isinstance(index_col, list):
             new_index = df[index_col] if index_col else df.index
         else:
+            df = df.reset_index()
             new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
         return cls(data, index=new_index, columns=cat.categories.values)
 
@@ -275,15 +316,25 @@ class SparseFrame(object):
         new_index = self.index.values[~mask]
         return SparseFrame(new_data, index=new_index, columns=self.columns)
 
+    def set_index(self, idx=None, level=0):
+        if idx is not None:
+            assert len(idx) == self.data.shape[0]
+            self.index = _ensure_index(idx)
+        else:
+            self.index = self.index.get_level_values(level)
+
     @classmethod
     def vstack(self, frames):
         assert np.all([np.all(frames[0].columns == frame.columns)
                        for frame in frames]), "Columns don't match"
         data = list(map(lambda x: x.data, frames))
-        new_idx = np.hstack([f.index for f in frames])
+        new_idx = frames[0].index
+        for f in frames[1:]:
+            new_idx = new_idx.append(f.index)
         return SparseFrame(sparse.vstack(data),
                            index=new_idx,
                            columns=frames[0].columns)
+
 
     @classmethod
     def read_npz(cls, filename):
@@ -364,6 +415,3 @@ def _sparse_groupby_sum_cs(cs, group_col, categorical_col, categories):
     table = SparseFrame.from_df(cs, categorical_col, categories,
                                 index_col=group_col)
     return table.groupby()
-
-
-

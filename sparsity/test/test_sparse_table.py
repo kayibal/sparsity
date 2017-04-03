@@ -3,12 +3,13 @@ import unittest
 import os
 import datetime as dt
 
+import dask
+import dask.dataframe as dd
 import pandas as pd
 import numpy as np
 import pytest
 
-#from dask.async import get_sync
-#import dask.dataframe as dd
+from dask.async import get_sync
 from sparsity import SparseFrame #csr_one_hot_series #, sparse_aggregate_cs
 
 # 2017 starts with a sunday
@@ -81,6 +82,11 @@ def test_iloc():
 def test_loc():
     sf = SparseFrame(np.identity(5), index=list("ABCDE"))
 
+    # test single
+    assert np.all(sf.loc['A'].data.todense() ==\
+                  np.matrix([[1,0,0,0,0]]))
+
+    # test slices
     assert np.all(sf.loc[:'B'].data.todense() == np.identity(5)[:2])
 
     sf = SparseFrame(np.identity(5), pd.date_range("2016-10-01", periods=5))
@@ -192,6 +198,22 @@ def test_vstack():
                                 columns=list('XYZWQ'))
         SparseFrame.vstack(frames)
 
+
+def test_vstack_multi_index(clickstream):
+    df_0 = clickstream.iloc[:len(clickstream) // 2]
+    df_1 = clickstream.iloc[len(clickstream) // 2:]
+    sf_0 = SparseFrame.from_df(df_0,
+                               categories=list('ABCDE'),
+                               column='page_id',
+                               index_col=['index', 'id'])
+    sf_1 = SparseFrame.from_df(df_1,
+                               categories=list('ABCDE'),
+                               column='page_id',
+                               index_col=['index', 'id'])
+    res = SparseFrame.vstack([sf_0, sf_1])
+    assert isinstance(res.index, pd.MultiIndex)
+
+
 def test_boolean_indexing():
     sf = SparseFrame(np.identity(5))
     res = sf.loc[sf.index > 2]
@@ -199,6 +221,35 @@ def test_boolean_indexing():
     assert res.shape == (2, 5)
     assert res.index.tolist() == [3,4]
 
+
+def test_dask_loc(clickstream):
+    sf = dd.from_pandas(clickstream, npartitions=10)\
+        .map_partitions(
+            SparseFrame.from_df,
+            column='page_id',
+            categories=list('ABCDE'),
+            meta=list
+    )
+    res = sf.loc['2016-01-15':'2016-02-15']
+    res = SparseFrame.concat(res.compute(get=get_sync).tolist())
+    assert res.index.date.max() == dt.date(2016,2,15)
+    assert res.index.date.min() == dt.date(2016,1,15)
+
+
+def test_dask_multi_index_loc(clickstream):
+    sf = dd.from_pandas(clickstream, npartitions=10) \
+        .map_partitions(
+        SparseFrame.from_df,
+        column='page_id',
+        index_col=['index', 'id'],
+        categories=list('ABCDE'),
+        meta=list
+    )
+
+    res = sf.loc['2016-01-15':'2016-02-15']
+    res = SparseFrame.vstack(res.compute(get=get_sync).tolist())
+    assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
+    assert res.index.get_level_values(0).date.max() == dt.date(2016,2,15)
 
 # def test_aggregate(testdata):
 #     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
