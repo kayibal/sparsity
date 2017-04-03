@@ -3,7 +3,7 @@ import pytest
 try:
     from sparsity._traildb import traildb_coo_repr_func
     from sparsity.io import traildb_to_coo
-except ImportError:
+except (ImportError, OSError):
     trail_db = False
 
 @pytest.mark.skipif(trail_db is False, reason="TrailDB is not installed")

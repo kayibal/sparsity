@@ -1,8 +1,8 @@
 from distutils.core import setup, Extension
 try:
+    import traildb
     import numpy as np
     from Cython.Build import cythonize
-    import traildb
     ext = Extension("sparsity._traildb",
                             ['sparsity/_traildb.pyx',
                              'sparsity/src/traildb_coo.c',
@@ -11,7 +11,7 @@ try:
                     include_dirs=['/usr/local/include/', np.get_include()],
                     libraries=["traildb"])
     ext_modules = cythonize([ext])
-except ImportError:
+except (ImportError, OSError):
     ext_modules = None
 
 setup(

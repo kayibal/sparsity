@@ -12,7 +12,7 @@ from sparsity import SparseFrame
 
 try:
     import traildb
-except ImportError:
+except (ImportError, OSError):
     traildb = False
 
 # 2017 starts with a sunday
