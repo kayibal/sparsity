@@ -1,6 +1,6 @@
 # Sparsity
 [![CircleCI](https://circleci.com/gh/kayibal/sparsity/tree/master.svg?style=svg)](https://circleci.com/gh/kayibal/sparsity/tree/master)
-
+[![Codecov](https://img.shields.io/codecov/c/github/kayibal/sparsity.svg)](https://github.com/kayibal/sparsity)
 
 Sparse data processing toolbox. It builds on top of pandas and scipy to provide DataFrame
 like API to work with sparse categorical data. 
