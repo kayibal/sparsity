@@ -335,7 +335,6 @@ class SparseFrame(object):
                            index=new_idx,
                            columns=frames[0].columns)
 
-
     @classmethod
     def read_npz(cls, filename):
         return cls(*read_npz(filename))
@@ -362,7 +361,7 @@ def _aligned_csr_elop(a, b, a_idx, b_idx, op='_plus_'):
     return added, join_idx
 
 
-def _matrix_join(a,b, a_idx, b_idx, how='outer'):
+def _matrix_join(a, b, a_idx, b_idx, how='outer'):
     """Asumme data == 0 at loc[-1]"""
     join_idx, lidx, ridx = a_idx.join(b_idx, return_indexers=True,
                                       how=how)

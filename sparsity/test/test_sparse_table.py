@@ -1,16 +1,19 @@
 # coding=utf-8
-import unittest
 import os
 import datetime as dt
 
-import dask
 import dask.dataframe as dd
 import pandas as pd
 import numpy as np
 import pytest
 
 from dask.async import get_sync
-from sparsity import SparseFrame #csr_one_hot_series #, sparse_aggregate_cs
+from sparsity import SparseFrame
+
+try:
+    import traildb
+except ImportError:
+    traildb = False
 
 # 2017 starts with a sunday
 @pytest.fixture()
@@ -150,12 +153,12 @@ def test_csr_one_hot_series(sampledata):
         .groupby(np.tile(np.arange(7),7)).data.todense()
     assert np.all(res == np.identity(7) * 7)
 
-
+@pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
 def test_read_traildb(testdb):
     res = SparseFrame.read_traildb(testdb, 'action')
     assert res.shape == (9,3)
 
-
+@pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
 def test_add_traildb(testdb):
     simple = SparseFrame.read_traildb(testdb, 'action')
     doubled = simple.add(simple)
@@ -239,17 +242,16 @@ def test_dask_loc(clickstream):
 def test_dask_multi_index_loc(clickstream):
     sf = dd.from_pandas(clickstream, npartitions=10) \
         .map_partitions(
-        SparseFrame.from_df,
-        column='page_id',
-        index_col=['index', 'id'],
-        categories=list('ABCDE'),
-        meta=list
+            SparseFrame.from_df,
+            column='page_id',
+            index_col=['index', 'id'],
+            categories=list('ABCDE'),
+            meta=list
     )
-
     res = sf.loc['2016-01-15':'2016-02-15']
     res = SparseFrame.vstack(res.compute(get=get_sync).tolist())
     assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
-    assert res.index.get_level_values(0).date.max() == dt.date(2016,2,15)
+    assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
 
 # def test_aggregate(testdata):
 #     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',

@@ -1,8 +1,12 @@
 import numpy as np
+import pytest
+try:
+    from sparsity._traildb import traildb_coo_repr_func
+    from sparsity.io import traildb_to_coo
+except ImportError:
+    trail_db = False
 
-from sparsity._traildb import traildb_coo_repr_func
-from sparsity.io import traildb_to_coo
-
+@pytest.mark.skipif(trail_db is False, reason="TrailDB is not installed")
 def test_coo_func(testdb):
     r_idx = np.zeros(9, dtype=np.uint64)
     c_idx = np.zeros(9, dtype=np.uint64)
