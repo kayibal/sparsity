@@ -112,7 +112,7 @@ class SparseFrame(object):
             by = np.array(by)
         else:
             if level and isinstance(self._index, pd.MultiIndex):
-                by = self._multi_index.get_level_values(level).values
+                by = self.index.get_level_values(level).values
             elif level:
                 raise ValueError("Connot use level in a non MultiIndex Frame")
             else:
@@ -174,6 +174,12 @@ class SparseFrame(object):
                                   index=new_index,
                                   columns=np.concatenate([self._columns, other._columns]))
         return res
+
+    def rename(self, columns):
+        new_cols = self.columns.map(columns)
+        return SparseFrame(self.data,
+                           index=self.index,
+                           columns=new_cols)
 
     def sort_index(self):
         """ Sort table along index
