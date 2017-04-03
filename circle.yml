@@ -8,8 +8,6 @@ dependencies:
     cache_directories:
         - /home/ubuntu/.cache/pip
     override:
-        - deactivate; bash install_traildbcore.sh
-        - pip install git+https://github.com/kayibal/traildb-python@py3-support#egg=traildb
         - pip install numpy cython 2>&1
         - pip install pytest pytest-cov
         - pip install -v scipy pandas
