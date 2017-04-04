@@ -169,7 +169,7 @@ class SparseFrame(object):
                 data, new_index = _matrix_join(self._data.T.tocsr(), other._data.T.tocsr(),
                                                self._columns, other._columns,
                                                how=how)
-                res = SparseFrame(data.T.to_csr(),
+                res = SparseFrame(data.T.tocsr(),
                                   index=np.concatenate([self.index, other.index]),
                                   columns=new_index)
         elif axis == 1:
@@ -187,11 +187,14 @@ class SparseFrame(object):
                                   columns=np.concatenate([self._columns, other._columns]))
         return res
 
-    def rename(self, columns):
+    def rename(self, columns, inplace=False):
         new_cols = self.columns.map(columns)
-        return SparseFrame(self.data,
-                           index=self.index,
-                           columns=new_cols)
+        if not inplace:
+            return SparseFrame(self.data,
+                               index=self.index,
+                               columns=new_cols)
+        else:
+            self._columns = new_cols
 
     def sort_index(self):
         """
@@ -242,7 +245,7 @@ class SparseFrame(object):
     def head(self, n=1):
         """Display head of the sparsed frame."""
         n = min(n, len(self._index))
-        return pd.SparseDataFrame(self.data[:n, :].todense(),
+        return pd.SparseDataFrame(self.data[:n,:].todense(),
                                   index=self.index[:n],
                                   columns=self.columns)
 
@@ -341,13 +344,27 @@ class SparseFrame(object):
         new_index = self.index.values[~mask]
         return SparseFrame(new_data, index=new_index, columns=self.columns)
 
-    def set_index(self, idx=None, level=0):
-        """Set index from idx or existing multi-index level."""
-        if idx is not None:
+    def set_index(self, column=None, idx=None, level=None, inplace=False):
+        """Set index from array, column or existing multi-index level."""
+        if column is None and idx is None and level is None:
+            raise ValueError("Either column, idx or level should not be None")
+        elif idx is not None:
             assert len(idx) == self.data.shape[0]
-            self.index = _ensure_index(idx)
+            new_idx = idx
+        elif level is not None and \
+                isinstance(self._index, pd.MultiIndex):
+            new_idx = self.index.get_level_values(level)
+        elif column is not None:
+            new_idx = np.asarray(self[column].data.todense())\
+                        .reshape(-1)
+
+        if inplace:
+            self._index = _ensure_index(new_idx)
         else:
-            self.index = self.index.get_level_values(level)
+            return SparseFrame(self.data,
+                               index=new_idx,
+                               columns=self.columns)
+
 
     @classmethod
     def vstack(cls, frames):

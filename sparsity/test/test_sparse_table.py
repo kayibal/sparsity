@@ -27,6 +27,17 @@ def sampledata():
     return gendata
 
 
+@pytest.fixture()
+def sf_midx():
+    midx = pd.MultiIndex.from_arrays(
+        [pd.date_range("2016-10-01", periods=5),
+         np.arange(5)]
+    )
+    cols = list('ABCDE')
+    sf = SparseFrame(np.identity(5), index=midx, columns=cols)
+    return sf
+
+
 def test_groupby():
     shuffle_idx = np.random.permutation(np.arange(100))
     index = np.tile(np.arange(10), 10)
@@ -95,12 +106,50 @@ def test_loc():
     # test slices
     assert np.all(sf.loc[:'B'].data.todense() == np.identity(5)[:2])
 
+
     sf = SparseFrame(np.identity(5), pd.date_range("2016-10-01", periods=5))
-    assert np.all(sf.loc['2016-10-01':"2016-10-03"].data.todense() ==
+
+    str_slice = slice('2016-10-01',"2016-10-03")
+    assert np.all(sf.loc[str_slice].data.todense() ==
                   np.identity(5)[:3])
-    #assert np.all(sf.loc[['D', 'E']].data.todense() == np.identity(5)[[3,
-    # 4]])
-    # assert np.all(sf.loc['D'].data.todense() == np.identity(5)[3])
+
+    ts_slice = slice(pd.Timestamp('2016-10-01'),pd.Timestamp("2016-10-03"))
+    assert np.all(sf.loc[ts_slice].data.todense() ==
+                  np.identity(5)[:3])
+
+    dt_slice = slice(dt.date(2016,10,1), dt.date(2016,10,3))
+    assert np.all(sf.loc[dt_slice].data.todense() ==
+                  np.identity(5)[:3])
+
+
+def test_loc_multi_index(sf_midx):
+
+    assert sf_midx.loc['2016-10-01'].data[0, 0] == 1
+
+    str_slice = slice('2016-10-01', "2016-10-03")
+    assert np.all(sf_midx.loc[str_slice].data.todense() ==
+                  np.identity(5)[:3])
+
+    ts_slice = slice(pd.Timestamp('2016-10-01'), pd.Timestamp("2016-10-03"))
+    assert np.all(sf_midx.loc[ts_slice].data.todense() ==
+                  np.identity(5)[:3])
+
+    dt_slice = slice(dt.date(2016, 10, 1), dt.date(2016, 10, 3))
+    assert np.all(sf_midx.loc[dt_slice].data.todense() ==
+                  np.identity(5)[:3])
+
+
+def test_set_index(sf_midx):
+    sf = sf_midx.set_index(level=1)
+    assert np.all(sf.index.values == np.arange(5))
+
+    sf = sf_midx.set_index(column='A')
+    assert np.all(sf.index.values[1:] == 0)
+    assert sf.index.values[0] == 1
+
+    sf = sf_midx.set_index(idx=np.arange(5))
+    assert np.all(sf.index.values == np.arange(5))
+
 
 
 def test_column_assign():
