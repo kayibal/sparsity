@@ -15,6 +15,7 @@ try:
 except (ImportError, OSError):
     traildb = False
 
+
 # 2017 starts with a sunday
 @pytest.fixture()
 def sampledata():
@@ -75,12 +76,14 @@ def test_mutually_exclusive_join():
     res = left.join(right, axis=1)
     assert np.all(res.data.todense() == correct)
 
+
 def test_iloc():
     sf = SparseFrame(np.identity(5))
 
     assert np.all(sf.iloc[:2].data.todense() == np.identity(5)[:2])
     assert np.all(sf.iloc[[3,4]].data.todense() == np.identity(5)[[3,4]])
     assert np.all(sf.iloc[3].data.todense() == np.identity(5)[3])
+
 
 def test_loc():
     sf = SparseFrame(np.identity(5), index=list("ABCDE"))
@@ -99,11 +102,13 @@ def test_loc():
     # 4]])
     # assert np.all(sf.loc['D'].data.todense() == np.identity(5)[3])
 
+
 def test_column_assign():
     sf = SparseFrame(np.identity(5))
     sf[6] = np.ones(5)
     correct = np.hstack([np.identity(5), np.ones(5).reshape(-1,1)])
     assert np.all(correct == sf.data.todense())
+
 
 @pytest.fixture()
 def complex_example():
@@ -135,6 +140,7 @@ def complex_example():
                                                             10)[shuffle_idx])
     return first, second, third
 
+
 def test_add_total_overlap(complex_example):
     first, second, third = complex_example
     correct = first.sort_index().data.todense()
@@ -153,10 +159,12 @@ def test_csr_one_hot_series(sampledata):
         .groupby(np.tile(np.arange(7),7)).data.todense()
     assert np.all(res == np.identity(7) * 7)
 
+
 @pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
 def test_read_traildb(testdb):
     res = SparseFrame.read_traildb(testdb, 'action')
     assert res.shape == (9,3)
+
 
 @pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
 def test_add_traildb(testdb):
