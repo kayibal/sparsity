@@ -1,6 +1,7 @@
 # coding=utf-8
 import os
 import datetime as dt
+import pandas as pd
 
 import dask.dataframe as dd
 import numpy as np
