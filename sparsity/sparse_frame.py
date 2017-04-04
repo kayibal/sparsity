@@ -36,13 +36,13 @@ class SparseFrame(object):
         if index is None:
             self._index = _default_index(N)
         else:
-            #assert len(index) == N
+            # assert len(index) == N
             self._index = _ensure_index(index)
 
         if columns is None:
             self._columns = _default_index(K)
         else:
-            #assert len(columns) == K
+            # assert len(columns) == K
             self._columns = _ensure_index(columns)
 
         if not sparse.isspmatrix_csr(data):
@@ -166,6 +166,9 @@ class SparseFrame(object):
                 index = np.hstack([self.index, other.index])
                 res = SparseFrame(data, index=index, columns=self._columns)
             else:
+                raise NotImplementedError(
+                    "Joining along axis 0 fails when column names differ."
+                    "This is probably caused by adding all-zeros row.")
                 data, new_index = _matrix_join(self._data.T.tocsr(), other._data.T.tocsr(),
                                                self._columns, other._columns,
                                                how=how)
@@ -179,7 +182,7 @@ class SparseFrame(object):
                 columns = np.hstack([self._columns, other._columns])
                 res = SparseFrame(data, index=self.index, columns=columns)
             else:
-                data, new_index= _matrix_join(self._data, other._data,
+                data, new_index = _matrix_join(self._data, other._data,
                                               self.index, other.index,
                                               how=how)
                 res = SparseFrame(data,
@@ -209,7 +212,7 @@ class SparseFrame(object):
         index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
-    def add(self, other):
+    def add(self, other, how='outer'):
         """
         Aligned addition. Adds two tables by aligning them first.
 
@@ -223,7 +226,8 @@ class SparseFrame(object):
         """
         assert np.all(self._columns == other.columns)
         data, new_idx = _aligned_csr_elop(self._data, other._data,
-                                          self.index, other.index)
+                                          self.index, other.index,
+                                          how=how)
         # new_idx = self._index.join(other.index, how=how)
         res = SparseFrame(data, index=new_idx, columns=self._columns)
         return res
@@ -316,10 +320,15 @@ class SparseFrame(object):
         return cls(data, index=new_index, columns=cat.categories.values)
 
     def __setitem__(self, key, value):
+        if key in self.columns:
+            raise NotImplementedError("Assigning to an existing column "
+                                      "is currently not implemented. You can "
+                                      "only assign values to new columns.")
         csc = self._data.tocsc()
+        value = np.broadcast_to(np.atleast_1d(value), (self.shape[0],))
         val = np.hstack([value, [0]]).reshape(-1,1)
         new_data = sparse.hstack([csc, sparse.csc_matrix(val)])
-        self._columns.append(pd.Index([key]))
+        self._columns = self._columns.append(pd.Index([key]))
         self._data = new_data.tocsr()
 
     def drop_duplicate_idx(self, **kwargs):
@@ -389,9 +398,9 @@ class SparseFrame(object):
         to_npz(self, filename)
 
 
-def _aligned_csr_elop(a, b, a_idx, b_idx, op='_plus_'):
+def _aligned_csr_elop(a, b, a_idx, b_idx, op='_plus_', how='outer'):
     """Assume data == 0 at loc[-1]"""
-    join_idx, lidx, ridx = a_idx.join(b_idx, return_indexers=True)
+    join_idx, lidx, ridx = a_idx.join(b_idx, return_indexers=True, how=how)
 
     if lidx is None:
         a_new = a[:-1,:]
