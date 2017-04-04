@@ -180,8 +180,6 @@ def test_set_index(sf_midx):
     sf = sf_midx.set_index(idx=np.arange(5))
     assert np.all(sf.index.values == np.arange(5))
 
-
-
     # what if indices are actually ints, but don't start from 0?
     sf = SparseFrame(np.identity(5), index=[1, 2, 3, 4, 5])
 
@@ -435,16 +433,40 @@ def test_dask_multi_index_loc(clickstream):
     assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
     assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
 
-# def test_aggregate(testdata):
-#     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
-#                   'Thursday', 'Friday', 'Saturday']
-#     df = testdata.set_index("date")
-#     raw_cs = dd.from_pandas(df, chunksize=50)
-#     os.makedirs("/tmp/drtools/sparse-test/", exist_ok=1)
-#     raw_cs.to_hdf("/tmp/drtools/sparse-test/*.h5", "/df", lock=False, mode="w", get=get_sync)
-#     raw_cs = dd.read_hdf("/tmp/drtools/sparse-test/*.h5", "/df", sorted_index="index", lock=False)
-#     result = sparse_aggregate_cs(raw_cs, categories=categories,
-#                                  slice_date=dt.date(2017,12,30),
-#                                  agg_bin=(0,356),
-#                                  categorical_col="weekday", get=get_sync)
-#     assert np.all(np.identity(7) * 51 == result.data.todense())
+
+def test_rename():
+    old_names = list('ABCDE')
+    func = lambda x: x + '_new'
+    new_names = list(map(func, old_names))
+    sf = SparseFrame(np.identity(5), columns=old_names)
+
+    sf_renamed = sf.rename(columns=func)
+    assert np.all(sf.columns == old_names), "Original frame was changed."
+    assert np.all(sf_renamed.columns == new_names), "New frame has old names."
+
+    sf.rename(columns=func, inplace=True)
+    assert np.all(sf.columns == new_names), "In-place renaming didn't work."
+
+
+def test_dropna():
+    index = np.arange(5, dtype=float)
+    index[[1, 3]] = np.nan
+    sf = SparseFrame(np.identity(5), index=index)
+
+    sf_cleared = sf.dropna()
+
+    correct = np.zeros((3, 5))
+    correct[[0, 1, 2], [0, 2, 4]] = 1
+
+    assert np.all(sf_cleared.data.todense() == correct)
+
+
+def test_drop_duplicate_idx():
+    sf = SparseFrame(np.identity(5), index=np.arange(5))
+    sf_dropped = sf.drop_duplicate_idx()
+    assert np.all(sf_dropped.data.todense() == sf.data.todense())
+
+    sf = SparseFrame(np.identity(8), index=[0, 0, 2, 3, 3, 5, 5, 5])
+    sf_dropped = sf.drop_duplicate_idx()
+    correct = np.identity(8)[[0, 2, 3, 5], :]
+    assert np.all(sf_dropped.data.todense() == correct)

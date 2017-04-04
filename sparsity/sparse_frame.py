@@ -191,6 +191,9 @@ class SparseFrame(object):
         return res
 
     def rename(self, columns, inplace=False):
+        """
+        Rename columns by applying a callable to every column name.
+        """
         new_cols = self.columns.map(columns)
         if not inplace:
             return SparseFrame(self.data,
@@ -364,8 +367,7 @@ class SparseFrame(object):
                 isinstance(self._index, pd.MultiIndex):
             new_idx = self.index.get_level_values(level)
         elif column is not None:
-            new_idx = np.asarray(self[column].data.todense())\
-                        .reshape(-1)
+            new_idx = np.asarray(self[column].data.todense()).reshape(-1)
 
         if inplace:
             self._index = _ensure_index(new_idx)
@@ -373,7 +375,6 @@ class SparseFrame(object):
             return SparseFrame(self.data,
                                index=new_idx,
                                columns=self.columns)
-
 
     @classmethod
     def vstack(cls, frames):
@@ -444,28 +445,3 @@ def _create_group_matrix(group_idx, dtype='f8'):
     return sparse.coo_matrix((data, (row_idx, col_idx)),
                              shape=(len(group_idx), len(group_idx.categories)),
                              dtype=dtype).tocsr()
-
-
-def sparse_aggregate_cs(raw, slice_date, agg_bin, categories,
-                        id_col="id", categorical_col="pageId", **kwargs):
-    """Aggregate clickstream data using sparse data structures."""
-    start_date = slice_date - dt.timedelta(days=agg_bin[1])
-    end_date = slice_date - dt.timedelta(days=agg_bin[0])
-
-    sliced_cs = raw.loc[start_date:end_date]
-    sparse_bagged= sliced_cs.map_partitions(_sparse_groupby_sum_cs,
-                                            group_col=id_col,
-                                            categorical_col=categorical_col,
-                                            categories=categories, meta=SparseFrame).compute(**kwargs)
-    data = SparseFrame.concat(sparse_bagged, axis=0)
-    data = data.groupby()
-    return data
-
-
-def _sparse_groupby_sum_cs(cs, group_col, categorical_col, categories):
-    """Transform a dask partition into a bagged sparse matrix."""
-    if isinstance(categories, str):
-        categories = pd.read_hdf(categories, "/df")
-    table = SparseFrame.from_df(cs, categorical_col, categories,
-                                index_col=group_col)
-    return table.groupby()
