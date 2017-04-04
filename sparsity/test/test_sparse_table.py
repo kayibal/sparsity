@@ -1,12 +1,11 @@
 # coding=utf-8
 import os
 import datetime as dt
+import pandas as pd
 
 import dask.dataframe as dd
-import pandas as pd
 import numpy as np
 import pytest
-
 from dask.async import get_sync
 from sparsity import SparseFrame
 
@@ -20,10 +19,13 @@ except (ImportError, OSError):
 @pytest.fixture()
 def sampledata():
     def gendata(n):
-        sampledata = pd.DataFrame(dict(date=pd.date_range("2017-01-01", periods=n)))
-        sampledata["weekday"] = sampledata.date.dt.weekday_name
-        sampledata["id"] = np.tile(np.arange(7), len(sampledata)//7+6)[:len(sampledata)]
-        return sampledata
+        sample_data = pd.DataFrame(
+            dict(date=pd.date_range("2017-01-01", periods=n)))
+        sample_data["weekday"] = sample_data.date.dt.weekday_name
+        sample_data["id"] = np.tile(np.arange(7), len(sample_data) // 7 + 1)[
+                            :len(sample_data)]
+        return sample_data
+
     return gendata
 
 
@@ -41,10 +43,20 @@ def sf_midx():
 def test_groupby():
     shuffle_idx = np.random.permutation(np.arange(100))
     index = np.tile(np.arange(10), 10)
-    data = np.vstack([np.identity(10) for i in range(10)])
+    data = np.vstack([np.identity(10) for _ in range(10)])
     t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
     res = t.groupby().data.todense()
-    assert np.all(res == (np.identity(10)*10))
+    assert np.all(res == (np.identity(10) * 10))
+
+
+def test_groupby_dense_random_data():
+    shuffle_idx = np.random.permutation(np.arange(100))
+    index = np.tile(np.arange(10), 10)
+    single_tile = np.random.rand(10, 10)
+    data = np.vstack([single_tile for _ in range(10)])
+    t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
+    res = t.groupby().data.todense()
+    np.testing.assert_array_almost_equal(res, (single_tile * 10))
 
 
 def test_simple_join():
@@ -62,16 +74,21 @@ def test_simple_join():
 def test_complex_join(complex_example):
     first, second, third = complex_example
     correct = pd.DataFrame(first.data.todense(),
-                           index=first.index)\
-                .join(pd.DataFrame(second.data.todense(),
-                                   index=second.index), how='left',
-                                   rsuffix='_second')\
-                .join(pd.DataFrame(third.data.todense(),
-                                   index=third.index), how='left',
-                                   rsuffix = '_third')\
-                .sort_index().fillna(0)
+                           index=first.index,
+                           columns=map(str, range(len(first.columns)))) \
+        .join(pd.DataFrame(second.data.todense(),
+                           index=second.index,
+                           columns=map(str, range(len(second.columns)))),
+              how='left',
+              rsuffix='_second') \
+        .join(pd.DataFrame(third.data.todense(),
+                           index=third.index,
+                           columns=map(str, range(len(third.columns)))),
+              how='left',
+              rsuffix='_third') \
+        .sort_index().fillna(0)
 
-    res = first.join(second, axis=1).join(third, axis=1)\
+    res = first.join(second, axis=1).join(third, axis=1) \
         .sort_index().data.todense()
     assert np.all(correct.values == res)
 
@@ -80,19 +97,33 @@ def test_complex_join(complex_example):
 
 
 def test_mutually_exclusive_join():
-    left = SparseFrame(np.identity(5), index=np.arange(5))
-    right = SparseFrame(np.identity(5), index=np.arange(5,10))
-    correct = np.vstack([np.hstack([np.identity(5), np.zeros((5,5))]),
+    correct = np.vstack([np.hstack([np.identity(5), np.zeros((5, 5))]),
                          np.hstack([np.zeros((5, 5)), np.identity(5)])])
-    res = left.join(right, axis=1)
-    assert np.all(res.data.todense() == correct)
+
+    left_ax1 = SparseFrame(np.identity(5), index=np.arange(5))
+    right_ax1 = SparseFrame(np.identity(5), index=np.arange(5, 10))
+
+    res_ax1 = left_ax1.join(right_ax1, axis=1)
+
+    left_ax0 = SparseFrame(np.identity(5), columns=np.arange(5))
+    right_ax0 = SparseFrame(np.identity(5), columns=np.arange(5, 10))
+
+    with pytest.raises(NotImplementedError):  # FIXME: remove when repaired
+        res_ax0 = left_ax0.join(right_ax0, axis=0)
+        assert np.all(res_ax0.data.todense() == correct), \
+            "Joining along axis 0 failed."
+
+    assert np.all(res_ax1.data.todense() == correct), \
+        "Joining along axis 1 failed."
 
 
 def test_iloc():
-    sf = SparseFrame(np.identity(5))
+    # name index and columns somehow so that their names are not integers
+    sf = SparseFrame(np.identity(5), index=list('ABCDE'),
+                     columns=list('ABCDE'))
 
     assert np.all(sf.iloc[:2].data.todense() == np.identity(5)[:2])
-    assert np.all(sf.iloc[[3,4]].data.todense() == np.identity(5)[[3,4]])
+    assert np.all(sf.iloc[[3, 4]].data.todense() == np.identity(5)[[3, 4]])
     assert np.all(sf.iloc[3].data.todense() == np.identity(5)[3])
 
 
@@ -100,8 +131,7 @@ def test_loc():
     sf = SparseFrame(np.identity(5), index=list("ABCDE"))
 
     # test single
-    assert np.all(sf.loc['A'].data.todense() ==\
-                  np.matrix([[1,0,0,0,0]]))
+    assert np.all(sf.loc['A'].data.todense() == np.matrix([[1, 0, 0, 0, 0]]))
 
     # test slices
     assert np.all(sf.loc[:'B'].data.todense() == np.identity(5)[:2])
@@ -150,13 +180,48 @@ def test_set_index(sf_midx):
     sf = sf_midx.set_index(idx=np.arange(5))
     assert np.all(sf.index.values == np.arange(5))
 
+    # what if indices are actually ints, but don't start from 0?
+    sf = SparseFrame(np.identity(5), index=[1, 2, 3, 4, 5])
+
+    # test single
+    assert np.all(sf.loc[1].data.todense() == np.matrix([[1, 0, 0, 0, 0]]))
+
+    # test slices
+    assert np.all(sf.loc[:2].data.todense() == np.identity(5)[:2])
+
+    # assert np.all(sf.loc[[4, 5]].data.todense() == np.identity(5)[[3, 4]])
 
 
-def test_column_assign():
+def test_new_column_assign_array():
     sf = SparseFrame(np.identity(5))
     sf[6] = np.ones(5)
-    correct = np.hstack([np.identity(5), np.ones(5).reshape(-1,1)])
+    correct = np.hstack([np.identity(5), np.ones(5).reshape(-1, 1)])
     assert np.all(correct == sf.data.todense())
+
+
+def test_new_column_assign_number():
+    sf = SparseFrame(np.identity(5))
+    sf[6] = 1
+    correct = np.hstack([np.identity(5), np.ones(5).reshape(-1, 1)])
+    assert np.all(correct == sf.data.todense())
+
+
+def test_existing_column_assign_array():
+    sf = SparseFrame(np.identity(5))
+    with pytest.raises(NotImplementedError):
+        sf[0] = np.ones(5)
+        correct = np.identity(5)
+        correct[:, 0] = 1
+        assert np.all(correct == sf.data.todense())
+
+
+def test_existing_column_assign_number():
+    sf = SparseFrame(np.identity(5))
+    with pytest.raises(NotImplementedError):
+        sf[0] = 1
+        correct = np.identity(5)
+        correct[:, 0] = 1
+        assert np.all(correct == sf.data.todense())
 
 
 @pytest.fixture()
@@ -164,29 +229,26 @@ def complex_example():
     first = np.identity(10)
     second = np.zeros((4, 10))
     third = np.zeros((4, 10))
-    np.fill_diagonal(second, 10)
-    np.fill_diagonal(third, 20)
-    # place diagonals at correct start index
-    second = second[:, [4, 5, 0, 1, 2, 3, 6, 7, 8, 9]]
-    third = third[:, np.asarray([4, 5, 6, 7, 8, 9, 0, 1, 2, 3])]
+    second[[0, 1, 2, 3], [2, 3, 4, 5]] = 10
+    third[[0, 1, 2, 3], [6, 7, 8, 9]] = 20
 
     shuffle_idx = np.arange(10)
     np.random.shuffle(shuffle_idx)
 
-    first = SparseFrame(first[shuffle_idx], index=np.arange(10)[
-        shuffle_idx])
+    first = SparseFrame(first[shuffle_idx],
+                        index=np.arange(10)[shuffle_idx])
 
     shuffle_idx = np.arange(4)
     np.random.shuffle(shuffle_idx)
 
-    second = SparseFrame(second[shuffle_idx], index=np.arange(2,
-                                                              6)[shuffle_idx])
+    second = SparseFrame(second[shuffle_idx],
+                         index=np.arange(2, 6)[shuffle_idx])
 
     shuffle_idx = np.arange(4)
     np.random.shuffle(shuffle_idx)
 
-    third = SparseFrame(third[shuffle_idx], index=np.arange(6,
-                                                            10)[shuffle_idx])
+    third = SparseFrame(third[shuffle_idx],
+                        index=np.arange(6, 10)[shuffle_idx])
     return first, second, third
 
 
@@ -201,25 +263,86 @@ def test_add_total_overlap(complex_example):
     assert np.all(res.data.todense() == correct)
 
 
+def test_simple_add_partial_overlap(complex_example):
+    first = SparseFrame(np.ones((3, 5)), index=[0, 1, 2])
+    second = SparseFrame(np.ones((3, 5)), index=[2, 3, 4])
+
+    correct = np.ones((5,5))
+    correct[2, :] += 1
+
+    res = first.add(second)
+    assert np.all(res.data.todense() == correct)
+    assert np.all(res.index == range(5))
+
+
+def test_add_partial_overlap(complex_example):
+    first, second, third = complex_example
+    third = third.sort_index()
+    third._index = np.arange(8, 12)
+
+    correct = first.sort_index().data.todense()
+    correct[2:6, :] += second.sort_index().data.todense()
+    correct[8:, :] += third.sort_index().data.todense()[:2, :]
+    correct = np.vstack((correct, third.sort_index().data.todense()[2:, :]))
+
+    res = first.add(second).add(third).sort_index()
+
+    assert np.all(res.data.todense() == correct)
+
+
+def test_add_no_overlap(complex_example):
+    first, second, third = complex_example
+    third = third.sort_index()
+    third._index = np.arange(10, 14)
+
+    correct = first.sort_index().data.todense()
+    correct[2:6, :] += second.sort_index().data.todense()
+    correct = np.vstack((correct, third.sort_index().data.todense()))
+
+    res = first.add(second).add(third).sort_index()
+
+    assert np.all(res.data.todense() == correct)
+
+
 def test_csr_one_hot_series(sampledata):
-    categories= ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
-                 'Thursday', 'Friday', 'Saturday']
-    res = SparseFrame.from_df(sampledata(49), 'weekday', categories)\
-        .groupby(np.tile(np.arange(7),7)).data.todense()
+    categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+                  'Thursday', 'Friday', 'Saturday']
+    sparse_frame = SparseFrame.from_df(sampledata(49), 'weekday', categories)
+    res = sparse_frame.groupby(np.tile(np.arange(7), 7)).data.todense()
     assert np.all(res == np.identity(7) * 7)
+
+
+def test_csr_one_hot_series_too_much_categories(sampledata):
+    categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+                  'Thursday', 'Friday', 'Yesterday', 'Saturday', 'Birthday']
+    sparse_frame = SparseFrame.from_df(sampledata(49), 'weekday', categories)
+    res = sparse_frame.groupby(np.tile(np.arange(7), 7)).data.todense()
+
+    correct = np.identity(7) * 7
+    correct = np.hstack((correct[:,:6], np.zeros((7, 1)),
+                         correct[:, 6:], np.zeros((7, 1))))
+
+    assert np.all(res == correct)
+
+
+def test_csr_one_hot_series_too_little_categories(sampledata):
+    categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+                  'Thursday', 'Friday']
+    with pytest.raises(ValueError):
+        SparseFrame.from_df(sampledata(49), 'weekday', categories)
 
 
 @pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
 def test_read_traildb(testdb):
     res = SparseFrame.read_traildb(testdb, 'action')
-    assert res.shape == (9,3)
+    assert res.shape == (9, 3)
 
 
 @pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
 def test_add_traildb(testdb):
     simple = SparseFrame.read_traildb(testdb, 'action')
     doubled = simple.add(simple)
-    assert np.all(doubled.data.todense() == simple.data.todense()*2)
+    assert np.all(doubled.data.todense() == simple.data.todense() * 2)
 
 
 def test_npz_io(complex_example):
@@ -236,7 +359,7 @@ def test_getitem():
     sf = SparseFrame(np.identity(10), columns=list('abcdefghij'))
     assert sf['a'].data.todense()[0] == 1
     assert sf['j'].data.todense()[9] == 1
-    tmp = sf[['j','a']].data.todense()
+    tmp = sf[['j', 'a']].data.todense()
     assert tmp[9, 0] == 1
     assert tmp[0, 1] == 1
 
@@ -279,21 +402,21 @@ def test_boolean_indexing():
     res = sf.loc[sf.index > 2]
     assert isinstance(res, SparseFrame)
     assert res.shape == (2, 5)
-    assert res.index.tolist() == [3,4]
+    assert res.index.tolist() == [3, 4]
 
 
 def test_dask_loc(clickstream):
-    sf = dd.from_pandas(clickstream, npartitions=10)\
+    sf = dd.from_pandas(clickstream, npartitions=10) \
         .map_partitions(
-            SparseFrame.from_df,
-            column='page_id',
-            categories=list('ABCDE'),
-            meta=list
+        SparseFrame.from_df,
+        column='page_id',
+        categories=list('ABCDE'),
+        meta=list
     )
     res = sf.loc['2016-01-15':'2016-02-15']
     res = SparseFrame.concat(res.compute(get=get_sync).tolist())
-    assert res.index.date.max() == dt.date(2016,2,15)
-    assert res.index.date.min() == dt.date(2016,1,15)
+    assert res.index.date.max() == dt.date(2016, 2, 15)
+    assert res.index.date.min() == dt.date(2016, 1, 15)
 
 
 def test_dask_multi_index_loc(clickstream):
@@ -310,17 +433,40 @@ def test_dask_multi_index_loc(clickstream):
     assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
     assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
 
-# def test_aggregate(testdata):
-#     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
-#                   'Thursday', 'Friday', 'Saturday']
-#     df = testdata.set_index("date")
-#     raw_cs = dd.from_pandas(df, chunksize=50)
-#     os.makedirs("/tmp/drtools/sparse-test/", exist_ok=1)
-#     raw_cs.to_hdf("/tmp/drtools/sparse-test/*.h5", "/df", lock=False, mode="w", get=get_sync)
-#     raw_cs = dd.read_hdf("/tmp/drtools/sparse-test/*.h5", "/df", sorted_index="index", lock=False)
-#     result = sparse_aggregate_cs(raw_cs, categories=categories,
-#                                  slice_date=dt.date(2017,12,30),
-#                                  agg_bin=(0,356),
-#                                  categorical_col="weekday", get=get_sync)
-#     assert np.all(np.identity(7) * 51 == result.data.todense())
 
+def test_rename():
+    old_names = list('ABCDE')
+    func = lambda x: x + '_new'
+    new_names = list(map(func, old_names))
+    sf = SparseFrame(np.identity(5), columns=old_names)
+
+    sf_renamed = sf.rename(columns=func)
+    assert np.all(sf.columns == old_names), "Original frame was changed."
+    assert np.all(sf_renamed.columns == new_names), "New frame has old names."
+
+    sf.rename(columns=func, inplace=True)
+    assert np.all(sf.columns == new_names), "In-place renaming didn't work."
+
+
+def test_dropna():
+    index = np.arange(5, dtype=float)
+    index[[1, 3]] = np.nan
+    sf = SparseFrame(np.identity(5), index=index)
+
+    sf_cleared = sf.dropna()
+
+    correct = np.zeros((3, 5))
+    correct[[0, 1, 2], [0, 2, 4]] = 1
+
+    assert np.all(sf_cleared.data.todense() == correct)
+
+
+def test_drop_duplicate_idx():
+    sf = SparseFrame(np.identity(5), index=np.arange(5))
+    sf_dropped = sf.drop_duplicate_idx()
+    assert np.all(sf_dropped.data.todense() == sf.data.todense())
+
+    sf = SparseFrame(np.identity(8), index=[0, 0, 2, 3, 3, 5, 5, 5])
+    sf_dropped = sf.drop_duplicate_idx()
+    correct = np.identity(8)[[0, 2, 3, 5], :]
+    assert np.all(sf_dropped.data.todense() == correct)
