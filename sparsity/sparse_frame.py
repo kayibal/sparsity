@@ -8,6 +8,7 @@ import uuid
 from functools import reduce
 
 from pandas.core.common import _default_index
+from pandas.api import types
 from pandas.indexes.base import _ensure_index
 from sparsity.io import to_npz, read_npz
 from scipy import sparse
@@ -437,12 +438,22 @@ def sparse_one_hot(df, column, categories, dtype='f8', index_col=None):
     One-hot encode a single column of a pandas.DataFrame.
     Returns a SparseFrame.
     """
-    if pd.core.common.is_categorical_dtype(df[column]):
-        cat = df[column]
-    else:
-        s = df[column]
-        cat = pd.Categorical(s, np.asarray(categories))
+    cols, data = _one_hot_series(categories, dtype, df[column])
 
+    if not isinstance(index_col, list):
+        new_index = df[index_col] if index_col else df.index
+    else:
+        df = df.reset_index()
+        new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
+    return SparseFrame(data, index=new_index, columns=cols)
+
+
+def _one_hot_series(categories, dtype, oh_col):
+    if types.is_categorical_dtype(oh_col):
+        cat = oh_col
+    else:
+        s = oh_col
+        cat = pd.Categorical(s, np.asarray(categories))
     codes = cat.codes
     n_features = len(cat.categories)
     n_samples = codes.size
@@ -456,9 +467,4 @@ def sparse_one_hot(df, column, categories, dtype='f8', index_col=None):
     data = sparse.coo_matrix((data, (row_indices, col_indices)),
                              shape=(n_samples, n_features),
                              dtype=dtype).tocsr()
-    if not isinstance(index_col, list):
-        new_index = df[index_col] if index_col else df.index
-    else:
-        df = df.reset_index()
-        new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
-    return SparseFrame(data, index=new_index, columns=cat.categories.values)
+    return cat.categories.values, data
