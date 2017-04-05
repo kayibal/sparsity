@@ -4,7 +4,6 @@ from functools import partial
 
 import pandas as pd
 import numpy as np
-import datetime as dt
 import uuid
 from functools import reduce
 
@@ -30,8 +29,15 @@ class SparseFrame(object):
                  'ndim', 'iloc', 'loc']
 
     def __init__(self, data, index=None, columns=None, **kwargs):
-        if len(data.shape) != 2:
+        if len(data.shape) > 2:
             raise ValueError("Only two dimensional data supported")
+
+        if len(data.shape) == 1 and isinstance(data, pd.Series):
+            data = data.to_frame()
+
+        elif len(data.shape) == 1:
+            data = data.reshape(-1,1)
+
         N, K = data.shape
 
         if index is None:
@@ -46,7 +52,11 @@ class SparseFrame(object):
             # assert len(columns) == K
             self._columns = _ensure_index(columns)
 
-        if not sparse.isspmatrix_csr(data):
+        if isinstance(data, pd.DataFrame):
+            self._init_csr(sparse.csr_matrix(data.values))
+            self._index = _ensure_index(data.index)
+            self._columns = _ensure_index(data.columns)
+        elif not sparse.isspmatrix_csr(data):
             try:
                 sparse_data = sparse.csr_matrix(data, **kwargs)
             except TypeError:
@@ -63,16 +73,6 @@ class SparseFrame(object):
         self.ndim = 2
         self.iloc = _CsrILocationIndexer(self, 'iloc')
         self.loc = _CsrLocIndexer(self, 'loc')
-
-    @classmethod
-    def from_df(cls, df: pd.DataFrame, index=None, columns=None, **kwargs):
-        if index is None:
-            index = df.index
-        if columns is None:
-            columns = df.columns
-        sf = SparseFrame(df.as_matrix(), index=index, columns=columns,
-                         **kwargs)
-        return sf
 
     def _init_csr(self, csr):
         """Keep a zero row at the end of the csr matrix for aligns."""

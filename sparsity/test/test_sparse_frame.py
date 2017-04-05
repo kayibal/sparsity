@@ -386,13 +386,13 @@ def test_vstack_multi_index(clickstream):
     df_0 = clickstream.iloc[:len(clickstream) // 2]
     df_1 = clickstream.iloc[len(clickstream) // 2:]
     sf_0 = sparse_one_hot(df_0,
-                               categories=list('ABCDE'),
-                               column='page_id',
-                               index_col=['index', 'id'])
+                          categories=list('ABCDE'),
+                          column='page_id',
+                          index_col=['index', 'id'])
     sf_1 = sparse_one_hot(df_1,
-                               categories=list('ABCDE'),
-                               column='page_id',
-                               index_col=['index', 'id'])
+                          categories=list('ABCDE'),
+                          column='page_id',
+                          index_col=['index', 'id'])
     res = SparseFrame.vstack([sf_0, sf_1])
     assert isinstance(res.index, pd.MultiIndex)
 
@@ -472,21 +472,24 @@ def test_drop_duplicate_idx():
     assert np.all(sf_dropped.data.todense() == correct)
 
 
-def test_from_df(sampledata):
-    df = sampledata(10)  # type: pd.DataFrame
+def test_init_with_pandas():
+    df = pd.DataFrame(np.identity(5),
+                      index=[
+                          pd.date_range("2100-01-01", periods=5),
+                          np.arange(5)
+                      ],
+                      columns=list('ABCDE'))
+    sf = SparseFrame(df)
+    assert sf.shape == (5, 5)
+    assert isinstance(sf.index, pd.MultiIndex)
+    assert sf.columns.tolist() == list('ABCDE')
+
+    s = pd.Series(np.ones(10))
+    sf = SparseFrame(s)
+
+    assert sf.shape == (10, 1)
+    assert np.all(sf.data.todense() == np.ones(10).reshape(-1, 1))
+
+    df['A'] = 'bla'
     with pytest.raises(TypeError):
-        sf = SparseFrame.from_df(df)
-
-    df = pd.DataFrame(np.identity(5), index=list('ABCDE'),
-                      columns=list('VWXYZ'))
-    sf = SparseFrame.from_df(df)
-
-    assert np.all(sf.data.todense() == df.as_matrix())
-    assert np.all(sf.index == df.index)
-    assert np.all(sf.columns == df.columns)
-
-    sf2 = SparseFrame.from_df(df, index=reversed(df.index),
-                              columns=reversed(df.columns))
-    assert np.all(sf2.data.todense() == df.as_matrix())
-    assert np.all(sf2.index == pd.Index(reversed(df.index)))
-    assert np.all(sf2.columns == pd.Index(reversed(df.columns)))
+        sf = SparseFrame(df)
