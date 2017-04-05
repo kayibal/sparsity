@@ -3,7 +3,6 @@ from functools import partial
 
 import pandas as pd
 import numpy as np
-import datetime as dt
 import uuid
 from functools import reduce
 
@@ -29,8 +28,15 @@ class SparseFrame(object):
                  'ndim', 'iloc', 'loc']
 
     def __init__(self, data, index=None, columns=None, **kwargs):
-        if len(data.shape) != 2:
+        if len(data.shape) > 2:
             raise ValueError("Only two dimensional data supported")
+
+        if len(data.shape) == 1 and isinstance(data, pd.Series):
+            data = data.to_frame()
+
+        elif len(data.shape) == 1:
+            data = data.reshape(-1,1)
+
         N, K = data.shape
 
         if index is None:
@@ -45,7 +51,11 @@ class SparseFrame(object):
             # assert len(columns) == K
             self._columns = _ensure_index(columns)
 
-        if not sparse.isspmatrix_csr(data):
+        if isinstance(data, pd.DataFrame):
+            self._init_csr(sparse.csr_matrix(data.values))
+            self._index = _ensure_index(data.index)
+            self._columns = _ensure_index(data.columns)
+        elif not sparse.isspmatrix_csr(data):
             self._init_csr(sparse.csr_matrix(data, **kwargs))
         else:
             self._init_csr(data)

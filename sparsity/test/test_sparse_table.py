@@ -470,3 +470,26 @@ def test_drop_duplicate_idx():
     sf_dropped = sf.drop_duplicate_idx()
     correct = np.identity(8)[[0, 2, 3, 5], :]
     assert np.all(sf_dropped.data.todense() == correct)
+
+
+def test_init_with_pandas():
+    df = pd.DataFrame(np.identity(5),
+                      index=[
+                          pd.date_range("2100-01-01", periods=5),
+                          np.arange(5)
+                      ],
+                      columns=list('ABCDE'))
+    sf = SparseFrame(df)
+    assert sf.shape == (5, 5)
+    assert isinstance(sf.index, pd.MultiIndex)
+    assert sf.columns.tolist() == list('ABCDE')
+
+    s = pd.Series(np.ones(10))
+    sf = SparseFrame(s)
+
+    assert sf.shape == (10, 1)
+    assert np.all(sf.data.todense() == np.ones(10).reshape(-1, 1))
+
+    df['A'] = 'bla'
+    with pytest.raises(TypeError):
+        sf = SparseFrame(df)
