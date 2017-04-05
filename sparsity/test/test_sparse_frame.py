@@ -7,7 +7,7 @@ import dask.dataframe as dd
 import numpy as np
 import pytest
 from dask.async import get_sync
-from sparsity import SparseFrame
+from sparsity import SparseFrame, sparse_one_hot
 
 try:
     import traildb
@@ -307,7 +307,7 @@ def test_add_no_overlap(complex_example):
 def test_csr_one_hot_series(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday', 'Saturday']
-    sparse_frame = SparseFrame.from_df(sampledata(49), 'weekday', categories)
+    sparse_frame = sparse_one_hot(sampledata(49), 'weekday', categories)
     res = sparse_frame.groupby(np.tile(np.arange(7), 7)).data.todense()
     assert np.all(res == np.identity(7) * 7)
 
@@ -315,7 +315,7 @@ def test_csr_one_hot_series(sampledata):
 def test_csr_one_hot_series_too_much_categories(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday', 'Yesterday', 'Saturday', 'Birthday']
-    sparse_frame = SparseFrame.from_df(sampledata(49), 'weekday', categories)
+    sparse_frame = sparse_one_hot(sampledata(49), 'weekday', categories)
     res = sparse_frame.groupby(np.tile(np.arange(7), 7)).data.todense()
 
     correct = np.identity(7) * 7
@@ -329,7 +329,7 @@ def test_csr_one_hot_series_too_little_categories(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday']
     with pytest.raises(ValueError):
-        SparseFrame.from_df(sampledata(49), 'weekday', categories)
+        sparse_one_hot(sampledata(49), 'weekday', categories)
 
 
 @pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
@@ -385,14 +385,14 @@ def test_vstack():
 def test_vstack_multi_index(clickstream):
     df_0 = clickstream.iloc[:len(clickstream) // 2]
     df_1 = clickstream.iloc[len(clickstream) // 2:]
-    sf_0 = SparseFrame.from_df(df_0,
-                               categories=list('ABCDE'),
-                               column='page_id',
-                               index_col=['index', 'id'])
-    sf_1 = SparseFrame.from_df(df_1,
-                               categories=list('ABCDE'),
-                               column='page_id',
-                               index_col=['index', 'id'])
+    sf_0 = sparse_one_hot(df_0,
+                          categories=list('ABCDE'),
+                          column='page_id',
+                          index_col=['index', 'id'])
+    sf_1 = sparse_one_hot(df_1,
+                          categories=list('ABCDE'),
+                          column='page_id',
+                          index_col=['index', 'id'])
     res = SparseFrame.vstack([sf_0, sf_1])
     assert isinstance(res.index, pd.MultiIndex)
 
@@ -408,7 +408,7 @@ def test_boolean_indexing():
 def test_dask_loc(clickstream):
     sf = dd.from_pandas(clickstream, npartitions=10) \
         .map_partitions(
-        SparseFrame.from_df,
+        sparse_one_hot,
         column='page_id',
         categories=list('ABCDE'),
         meta=list
@@ -422,7 +422,7 @@ def test_dask_loc(clickstream):
 def test_dask_multi_index_loc(clickstream):
     sf = dd.from_pandas(clickstream, npartitions=10) \
         .map_partitions(
-            SparseFrame.from_df,
+            sparse_one_hot,
             column='page_id',
             index_col=['index', 'id'],
             categories=list('ABCDE'),
