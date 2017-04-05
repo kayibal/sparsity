@@ -1,4 +1,5 @@
 # coding=utf-8
+import traceback
 from functools import partial
 
 import pandas as pd
@@ -46,7 +47,13 @@ class SparseFrame(object):
             self._columns = _ensure_index(columns)
 
         if not sparse.isspmatrix_csr(data):
-            self._init_csr(sparse.csr_matrix(data, **kwargs))
+            try:
+                sparse_data = sparse.csr_matrix(data, **kwargs)
+            except TypeError:
+                raise TypeError(traceback.format_exc() +
+                                "\nThe error described above occurred while "
+                                "converting data to sparse matrix.")
+            self._init_csr(sparse_data)
         else:
             self._init_csr(data)
 
@@ -56,6 +63,16 @@ class SparseFrame(object):
         self.ndim = 2
         self.iloc = _CsrILocationIndexer(self, 'iloc')
         self.loc = _CsrLocIndexer(self, 'loc')
+
+    @classmethod
+    def from_df(cls, df: pd.DataFrame, index=None, columns=None, **kwargs):
+        if index is None:
+            index = df.index
+        if columns is None:
+            columns = df.columns
+        sf = SparseFrame(df.as_matrix(), index=index, columns=columns,
+                         **kwargs)
+        return sf
 
     def _init_csr(self, csr):
         """Keep a zero row at the end of the csr matrix for aligns."""
@@ -290,38 +307,6 @@ class SparseFrame(object):
              names=('uuid', 'timestamp'))
         return cls(coo.tocsr(), index=index, columns=cols)
 
-    @classmethod
-    def from_df(cls, df, column, categories, dtype='f8', index_col=None):
-        """
-        Transform a pandas.Series into a sparse matrix.
-        Works by one-hot-encoding for the given categories
-        """
-        if pd.core.common.is_categorical_dtype(df[column]):
-            cat = df[column]
-        else:
-            s = df[column]
-            cat = pd.Categorical(s, np.asarray(categories))
-
-        codes = cat.codes
-        n_features = len(cat.categories)
-        n_samples = codes.size
-        mask = codes != -1
-        if np.any(~mask):
-            raise ValueError("unknown categorical features present %s "
-                             "during transform." % np.unique(s[~mask]))
-        row_indices = np.arange(n_samples, dtype=np.int32)
-        col_indices = codes
-        data = np.ones(row_indices.size)
-        data = sparse.coo_matrix((data, (row_indices, col_indices)),
-                                 shape=(n_samples, n_features),
-                                 dtype=dtype).tocsr()
-        if not isinstance(index_col, list):
-            new_index = df[index_col] if index_col else df.index
-        else:
-            df = df.reset_index()
-            new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
-        return cls(data, index=new_index, columns=cat.categories.values)
-
     def __setitem__(self, key, value):
         if key in self.columns:
             raise NotImplementedError("Assigning to an existing column "
@@ -445,3 +430,35 @@ def _create_group_matrix(group_idx, dtype='f8'):
     return sparse.coo_matrix((data, (row_idx, col_idx)),
                              shape=(len(group_idx), len(group_idx.categories)),
                              dtype=dtype).tocsr()
+
+
+def sparse_one_hot(df, column, categories, dtype='f8', index_col=None):
+    """
+    One-hot encode a single column of a pandas.DataFrame.
+    Returns a SparseFrame.
+    """
+    if pd.core.common.is_categorical_dtype(df[column]):
+        cat = df[column]
+    else:
+        s = df[column]
+        cat = pd.Categorical(s, np.asarray(categories))
+
+    codes = cat.codes
+    n_features = len(cat.categories)
+    n_samples = codes.size
+    mask = codes != -1
+    if np.any(~mask):
+        raise ValueError("unknown categorical features present %s "
+                         "during transform." % np.unique(s[~mask]))
+    row_indices = np.arange(n_samples, dtype=np.int32)
+    col_indices = codes
+    data = np.ones(row_indices.size)
+    data = sparse.coo_matrix((data, (row_indices, col_indices)),
+                             shape=(n_samples, n_features),
+                             dtype=dtype).tocsr()
+    if not isinstance(index_col, list):
+        new_index = df[index_col] if index_col else df.index
+    else:
+        df = df.reset_index()
+        new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
+    return SparseFrame(data, index=new_index, columns=cat.categories.values)
