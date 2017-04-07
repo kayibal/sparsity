@@ -132,6 +132,7 @@ def test_iloc():
     assert np.all(sf.iloc[:2].data.todense() == np.identity(5)[:2])
     assert np.all(sf.iloc[[3, 4]].data.todense() == np.identity(5)[[3, 4]])
     assert np.all(sf.iloc[3].data.todense() == np.identity(5)[3])
+    assert sf.iloc[1:].shape == (4, 5)
 
 
 def test_loc():

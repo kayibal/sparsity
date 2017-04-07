@@ -363,7 +363,7 @@ class SparseFrame(object):
                                   columns=self.columns)
 
     def _slice(self, sliceobj):
-        return SparseFrame(self._data[sliceobj,:],
+        return SparseFrame(self.data[sliceobj,:],
                            index=self.index[sliceobj],
                            columns=self.columns)
 
