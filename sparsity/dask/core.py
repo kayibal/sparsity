@@ -1,9 +1,10 @@
+from scipy import sparse
+
 import dask
 import pandas as pd
 from dask import threaded
 from dask.base import normalize_token, tokenize
-from dask.dataframe.utils import make_meta as dd_make_meta
-from dask.dataframe.utils import meta_nonempty
+from dask.dataframe.utils import make_meta as dd_make_meta, _nonempty_index
 from dask.delayed import Delayed
 from dask.optimize import cull
 from toolz import merge
@@ -20,6 +21,11 @@ def _make_meta(inp):
         if isinstance(meta, pd.core.generic.NDFrame):
             return sp.SparseFrame(meta)
         return meta
+
+def _meta_nonempty(x):
+    idx = _nonempty_index(x.index)
+    return sp.SparseFrame(sparse.csr_matrix((len(idx), len(x.columns))),
+                     index=idx, columns=x.columns)
 
 def optimize(dsk, keys, **kwargs):
     dsk, _ = cull(dsk, keys)
@@ -57,7 +63,7 @@ class SparseFrame(dask.base.Base):
 
     @property
     def _meta_nonempty(self):
-        return sp.SparseFrame(meta_nonempty(self._meta.todense()))
+        return _meta_nonempty(self._meta)
 
     def map_partitions(self, func, meta, *args, **kwargs):
         return map_partitions(func, self, meta, *args, **kwargs)

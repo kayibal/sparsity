@@ -86,6 +86,7 @@ class SparseFrame(object):
 
     def _init_values(self, data, kwargs):
         if isinstance(data, pd.DataFrame):
+            self.empty = data.empty
             self._init_csr(sparse.csr_matrix(data.values))
             self._index = _ensure_index(data.index)
             self._columns = _ensure_index(data.columns)
@@ -101,11 +102,18 @@ class SparseFrame(object):
         return self.todense(pandas=False)
 
     def todense(self, pandas=True):
-        dense = np.asarray(self.data.toarray())
+        if not self.empty:
+            dense = np.asarray(self.data.toarray())
+        else:
+            dense = np.empty(shape=(0, len(self.columns)))
+
         if self.shape[0] == 1 or self.shape[1] == 1:
             dense = dense.reshape(-1)
         if pandas == True:
-            if len(dense.shape) == 1:
+            if self.empty:
+                dense = pd.DataFrame([], columns=self.columns,
+                                     index=self._index[:0])
+            elif len(dense.shape) == 1:
                 dense = pd.Series(dense, index=self.index,
                                   name=self.columns[0])
             else:
@@ -121,6 +129,8 @@ class SparseFrame(object):
                 [csr,
                  sparse.coo_matrix((1,csr.shape[1])).tocsr()
                  ])
+        else:
+            self._data = csr
 
     def _get_axis(self, axis):
         """Rudimentary indexing support."""
