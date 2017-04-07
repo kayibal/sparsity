@@ -3,7 +3,9 @@ from dask.dataframe.core import _get_return_type as \
     df_get_return_type
 
 import sparsity as sp
-from .core import SparseFrame, from_pandas, one_hot_encode
+from .core import SparseFrame
+from .io import from_pandas, read_npz
+from .reshape import one_hot_encode
 
 
 def _get_return_type_sparsity(meta):

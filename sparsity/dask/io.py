@@ -1,14 +1,15 @@
 from glob import glob
 from math import ceil
-from tokenize import tokenize
 
 import numpy as np
 import pandas as pd
+from dask.base import tokenize
 from dask.dataframe.io.io import sorted_division_locations
 
 import sparsity as sp
 from sparsity.dask.core import SparseFrame, _make_meta
 
+_sorted = sorted
 
 def from_pandas(df, npartitions=None, chunksize=None):
     nrows = df.shape[0]
@@ -50,11 +51,11 @@ def read_npz(path, sorted=False):
     """
     dsk = {}
     name = 'read_npz-{}'.format(tokenize(path))
-    _paths = sorted(list(glob(path)))
+    _paths = _sorted(list(glob(path)))
     archive = np.load(_paths[0])
 
-    meta_idx, meta_cols = archive['index'], archive['columns']
-    meta = sp.SparseFrame([],
+    meta_idx, meta_cols = archive['frame_index'], archive['frame_columns']
+    meta = sp.SparseFrame(np.empty(shape=(0, len(meta_cols))),
                           index=meta_idx[:0],
                           columns=meta_cols)
     for i, p in enumerate(_paths):
@@ -74,7 +75,7 @@ def _npz_read_divisions(paths, level=None):
     assert len(paths) > 1
     for p in paths:
         archive = np.load(p)
-        idx = archive['index']
+        idx = archive['frame_index']
         if level is not None:
             idx = idx.get_level_values(level)
         istart = idx[0]
