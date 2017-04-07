@@ -21,13 +21,28 @@ except:
 from sparsity.indexing import _CsrILocationIndexer, _CsrLocIndexer
 
 
+def _is_empty(data):
+    try:
+        if data.nnz == 0:
+            return True
+        else:
+            return False
+    except:
+        pass
+
+    if len(data) == 0:
+        return True
+    elif isinstance(data, list) and sum(map(len, list)) == 0:
+        return True
+    return False
+
 class SparseFrame(object):
     """
     Simple sparse table based on scipy.sparse.csr_matrix
     """
 
-    __slots__ = ["_index", "_columns", "_data", "shape", "_multi_index",
-                 'ndim', 'iloc', 'loc']
+    __slots__ = ["_index", "_columns", "_data", "shape",
+                 'ndim', 'iloc', 'loc', 'empty']
 
     def __init__(self, data, index=None, columns=None, **kwargs):
         if len(data.shape) > 2:
@@ -39,6 +54,7 @@ class SparseFrame(object):
         elif len(data.shape) == 1:
             data = data.reshape(-1,1)
 
+        self.empty = False
         N, K = data.shape
 
         if index is None:
@@ -53,34 +69,58 @@ class SparseFrame(object):
             # assert len(columns) == K
             self._columns = _ensure_index(columns)
 
-        if isinstance(data, pd.DataFrame):
-            self._init_csr(sparse.csr_matrix(data.values))
-            self._index = _ensure_index(data.index)
-            self._columns = _ensure_index(data.columns)
-        elif not sparse.isspmatrix_csr(data):
+        if not sparse.isspmatrix_csr(data):
             try:
-                sparse_data = sparse.csr_matrix(data, **kwargs)
+                self._init_values(data, kwargs)
             except TypeError:
                 raise TypeError(traceback.format_exc() +
                                 "\nThe error described above occurred while "
                                 "converting data to sparse matrix.")
-            self._init_csr(sparse_data)
         else:
             self._init_csr(data)
-
-        self.shape = data.shape
 
         # register indexers
         self.ndim = 2
         self.iloc = _CsrILocationIndexer(self, 'iloc')
         self.loc = _CsrLocIndexer(self, 'loc')
 
+    def _init_values(self, data, kwargs):
+        if isinstance(data, pd.DataFrame):
+            self._init_csr(sparse.csr_matrix(data.values))
+            self._index = _ensure_index(data.index)
+            self._columns = _ensure_index(data.columns)
+        elif _is_empty(data):
+            self.empty = True
+            self._data = sparse.csr_matrix((len(self.index),
+                                            len(self.columns)))
+        else:
+            sparse_data = sparse.csr_matrix(data, **kwargs)
+            self._init_csr(sparse_data)
+
+    def toarray(self):
+        return self.todense(pandas=False)
+
+    def todense(self, pandas=True):
+        dense = np.asarray(self.data.toarray())
+        if self.shape[0] == 1 or self.shape[1] == 1:
+            dense = dense.reshape(-1)
+        if pandas == True:
+            if len(dense.shape) == 1:
+                dense = pd.Series(dense, index=self.index,
+                                  name=self.columns[0])
+            else:
+                dense = pd.DataFrame(dense, index=self.index,
+                                     columns=self.columns)
+        return dense
+
     def _init_csr(self, csr):
         """Keep a zero row at the end of the csr matrix for aligns."""
-        self._data = sparse.vstack(
-            [csr,
-             sparse.coo_matrix((1,csr.shape[1])).tocsr()
-             ])
+        self.shape = csr.shape
+        if not self.empty:
+            self._data = sparse.vstack(
+                [csr,
+                 sparse.coo_matrix((1,csr.shape[1])).tocsr()
+                 ])
 
     def _get_axis(self, axis):
         """Rudimentary indexing support."""
@@ -88,6 +128,28 @@ class SparseFrame(object):
             return self._index
         if axis == 1:
             return self._columns
+
+    def sum(self, *args, **kwargs):
+        return self.data.sum(*args, **kwargs)
+
+    def mean(self, *args, **kwargs):
+        return self.data.mean(*args, **kwargs)
+
+    def std(self, *args, **kwargs):
+        return self.data.std(*args, **kwargs)
+
+    def max(self, *args, **kwargs):
+        return self.data.max(*args, **kwargs)
+
+    def min(self, *args, **kwargs):
+        return self.data.min(*args, **kwargs)
+
+    def copy(self, *args, **kwargs):
+        return SparseFrame(self.data.copy(*args, **kwargs),
+                           self.index.copy(*args, **kwargs),
+                           self.columns.copy(*args, **kwargs))
+    def nnz(self):
+        return self.data.nnz
 
     def take(self, idx, axis=0, **kwargs):
         """Return data at integer locations."""
@@ -115,6 +177,8 @@ class SparseFrame(object):
 
     @property
     def data(self):
+        if self.empty:
+            return self._data
         return self._data[:-1,:]
 
     def groupby(self, by=None, level=0):
@@ -261,11 +325,35 @@ class SparseFrame(object):
     def _align_axis(self):
         raise NotImplementedError()
 
-    def __repr__(self, *args, **kwargs):
-        return pd.SparseDataFrame(self.data[[0,-1],:].todense(),
-                                  index=self.index[[0,-1]],
-                                  columns=self.columns)\
-                .__repr__(*args, **kwargs)
+    def __repr__(self):
+        nrows = min(5, self.shape[0])
+
+        if len(self._columns) > 50:
+            cols = self.columns[:25].append(self.columns[-25:])
+            data = sparse.hstack([self.data[:nrows, :25],
+                                  self.data[:nrows, -25:]])
+            data = data.toarray()
+        else:
+            cols = self._columns
+            data = self.data[:nrows,:].toarray()
+
+        df = pd.DataFrame(data,
+            columns=cols,
+            index=self._index[:nrows]
+        )
+        df_str = df.__repr__().splitlines()[:-2]
+        sparse_str = "[{nrows}x{ncols} SparseFrame of type '<class " \
+                     "'{dtype}'>' \n with {nnz} stored elements " \
+                     "in Compressed Sparse Row format]".format(
+            nrows=self.shape[0],
+            ncols=self.shape[1],
+            dtype=self.data.dtype,
+            nnz=self.data.nnz
+        )
+        repr = "{data}\n{sparse}"\
+            .format(data='\n'.join(df_str),
+                    sparse=sparse_str)
+        return repr
 
     def head(self, n=1):
         """Display head of the sparsed frame."""
@@ -438,17 +526,17 @@ def sparse_one_hot(df, column, categories, dtype='f8', index_col=None):
     One-hot encode a single column of a pandas.DataFrame.
     Returns a SparseFrame.
     """
-    cols, data = _one_hot_series(categories, dtype, df[column])
+    cols, csr = _one_hot_series_csr(categories, dtype, df[column])
 
     if not isinstance(index_col, list):
         new_index = df[index_col] if index_col else df.index
     else:
         df = df.reset_index()
         new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
-    return SparseFrame(data, index=new_index, columns=cols)
+    return SparseFrame(csr, index=new_index, columns=cols)
 
 
-def _one_hot_series(categories, dtype, oh_col):
+def _one_hot_series_csr(categories, dtype, oh_col):
     if types.is_categorical_dtype(oh_col):
         cat = oh_col
     else:

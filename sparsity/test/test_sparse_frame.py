@@ -7,6 +7,8 @@ import dask.dataframe as dd
 import numpy as np
 import pytest
 from dask.async import get_sync
+from scipy import sparse
+
 from sparsity import SparseFrame, sparse_one_hot
 
 try:
@@ -38,6 +40,11 @@ def sf_midx():
     cols = list('ABCDE')
     sf = SparseFrame(np.identity(5), index=midx, columns=cols)
     return sf
+
+
+def test_empty_init():
+    sf = SparseFrame(np.array([]), index=[], columns=['A', 'B'])
+    assert sf.data.shape == (0, 2)
 
 
 def test_groupby():
@@ -413,6 +420,7 @@ def test_dask_loc(clickstream):
         categories=list('ABCDE'),
         meta=list
     )
+
     res = sf.loc['2016-01-15':'2016-02-15']
     res = SparseFrame.concat(res.compute(get=get_sync).tolist())
     assert res.index.date.max() == dt.date(2016, 2, 15)
@@ -471,6 +479,13 @@ def test_drop_duplicate_idx():
     correct = np.identity(8)[[0, 2, 3, 5], :]
     assert np.all(sf_dropped.data.todense() == correct)
 
+
+def test_repr():
+    sf = SparseFrame(sparse.csr_matrix((10, 10000)))
+    res = sf.__repr__()
+    assert isinstance(res, str)
+    assert '10x10000' in res
+    assert '0 stored' in res
 
 def test_init_with_pandas():
     df = pd.DataFrame(np.identity(5),
