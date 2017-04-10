@@ -16,7 +16,7 @@ except (ImportError, OSError):
 
 setup(
     name='sparsity',
-    version='0.2',
+    version='0.4',
     ext_modules = ext_modules,
     author='Alan Hoeng',
     author_email='alan.f.hoeng@gmail.com',
