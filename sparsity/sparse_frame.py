@@ -94,6 +94,7 @@ class SparseFrame(object):
             self.empty = True
             self._data = sparse.csr_matrix((len(self.index),
                                             len(self.columns)))
+            self.shape = self._data.shape
         else:
             sparse_data = sparse.csr_matrix(data, **kwargs)
             self._init_csr(sparse_data)

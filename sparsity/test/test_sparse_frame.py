@@ -488,6 +488,11 @@ def test_repr():
     assert '10x10000' in res
     assert '0 stored' in res
 
+    sf = SparseFrame(np.array([]), index=[], columns=['A', 'B'])
+    res = sf.__repr__()
+    assert isinstance(res, str)
+
+
 def test_init_with_pandas():
     df = pd.DataFrame(np.identity(5),
                       index=[
