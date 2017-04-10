@@ -89,7 +89,7 @@ class SparseFrame(dask.base.Base):
     def _repr_data(self):
         index = self._repr_divisions
         if len(self._meta._columns) > 50:
-            cols = self.columns[:25].append(self.columns[-25:])
+            cols = self._meta.columns[:25].append(self._meta.columns[-25:])
             data = [['...'] * 50] * len(index)
         else:
             cols = self._meta._columns

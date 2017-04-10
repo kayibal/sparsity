@@ -70,6 +70,10 @@ def test_repr():
                           npartitions=3)
     assert isinstance(dsf.__repr__(), str)
 
+    dsf = dsp.from_pandas(pd.DataFrame(np.random.rand(10, 100)),
+                          npartitions=3)
+    assert isinstance(dsf.__repr__(), str)
+
 
 def test_one_hot(clickstream):
     ddf = dd.from_pandas(clickstream, npartitions=10)
