@@ -204,6 +204,7 @@ def test_new_column_assign_array():
     sf = SparseFrame(np.identity(5))
     sf[6] = np.ones(5)
     correct = np.hstack([np.identity(5), np.ones(5).reshape(-1, 1)])
+    assert sf.shape == (5, 6)
     assert np.all(correct == sf.data.todense())
 
 
@@ -211,6 +212,24 @@ def test_new_column_assign_number():
     sf = SparseFrame(np.identity(5))
     sf[6] = 1
     correct = np.hstack([np.identity(5), np.ones(5).reshape(-1, 1)])
+    assert sf.shape == (5, 6)
+    assert np.all(correct == sf.data.todense())
+
+def test_assign_array():
+    sf = SparseFrame(np.identity(5), columns=list('ABCDE'))
+    sf = sf.assign(**{'F': np.ones(5)})
+    correct = np.hstack([np.identity(5), np.ones(5).reshape(-1, 1)])
+    assert 'F' in set(sf.columns)
+    assert sf.shape == (5, 6)
+    assert np.all(correct == sf.data.todense())
+
+
+def test_assign_number():
+    sf = SparseFrame(np.identity(5), columns=list('ABCDE'))
+    sf = sf.assign(**{'F': 1})
+    correct = np.hstack([np.identity(5), np.ones(5).reshape(-1, 1)])
+    assert 'F' in set(sf.columns)
+    assert sf.shape == (5, 6)
     assert np.all(correct == sf.data.todense())
 
 

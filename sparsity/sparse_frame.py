@@ -407,17 +407,36 @@ class SparseFrame(object):
              names=('uuid', 'timestamp'))
         return cls(coo.tocsr(), index=index, columns=cols)
 
+    def assign(self, **kwargs):
+        sf = self
+        for key, value in kwargs.items():
+            sf = sf._single_assign(key, value)
+        return sf
+
     def __setitem__(self, key, value):
         if key in self.columns:
             raise NotImplementedError("Assigning to an existing column "
                                       "is currently not implemented. You can "
                                       "only assign values to new columns.")
-        csc = self._data.tocsc()
+        new_cols, new_data = self._add_col(key, value)
+        self._init_csr(new_data)
+        self._columns = new_cols
+
+    def _add_col(self, key, value):
+        csc = self.data.tocsc()
         value = np.broadcast_to(np.atleast_1d(value), (self.shape[0],))
-        val = np.hstack([value, [0]]).reshape(-1,1)
-        new_data = sparse.hstack([csc, sparse.csc_matrix(val)])
-        self._columns = self._columns.append(pd.Index([key]))
-        self._data = new_data.tocsr()
+        val = value.reshape(-1, 1)
+        new_data = sparse.hstack([csc, sparse.csc_matrix(val)]).tocsr()
+        new_cols = self._columns.append(pd.Index([key]))
+        return new_cols, new_data
+
+    def _single_assign(self, key, value):
+        if key in self.columns:
+            raise NotImplementedError("Assigning to an existing column "
+                                      "is currently not implemented. You can "
+                                      "only assign values to new columns.")
+        new_cols, new_data = self._add_col(key, value)
+        return SparseFrame(new_data, index=self.index, columns=new_cols)
 
     def drop_duplicate_idx(self, **kwargs):
         """Drop rows with duplicated index."""
