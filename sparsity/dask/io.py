@@ -11,7 +11,23 @@ from sparsity.dask.core import SparseFrame, _make_meta
 
 _sorted = sorted
 
-def from_pandas(df, npartitions=None, chunksize=None):
+
+def from_pandas(df, npartitions=None, chunksize=None, name=None):
+    """
+    Parameters
+    ----------
+    df : pandas.DataFrame or pandas.Series
+        The DataFrame/Series with which to construct a Dask DataFrame/Series
+    npartitions : int, optional
+        The number of partitions of the index to create. Note that depending on
+        the size and index of the dataframe, the output may have fewer
+        partitions than requested.
+    chunksize : int, optional
+        The size of the partitions of the index.
+    name: string, optional
+        An optional keyname for the dataframe. Define when dataframe large.
+        Defaults to hashing the input. Hashing takes a lot of time on large df.
+    """
     nrows = df.shape[0]
 
     if chunksize is None:
@@ -24,7 +40,7 @@ def from_pandas(df, npartitions=None, chunksize=None):
 
     divisions, locations = sorted_division_locations(df.index,
                                                      chunksize=chunksize)
-    name = 'from_pandas-{}'.format(tokenize(df, npartitions))
+    name = name or 'from_pandas-{}'.format(tokenize(df, npartitions))
     dsk = dict(((name, i), sp.SparseFrame(df.iloc[start: stop]))
                for i, (start, stop) in enumerate(zip(locations[:-1],
                                                      locations[1:])))
@@ -71,6 +87,7 @@ def read_npz(path, sorted=False):
 
 
 def _npz_read_divisions(paths, level=None):
+    """Load paths sequentially and generate divisions list."""
     divisions = []
     assert len(paths) > 1
     for p in paths:
@@ -78,6 +95,7 @@ def _npz_read_divisions(paths, level=None):
         idx = archive['frame_index']
         if level is not None:
             idx = idx.get_level_values(level)
+        assert idx.is_monotonic_increasing
         istart = idx[0]
         istop = idx[-1]
         divisions.append(istart)
