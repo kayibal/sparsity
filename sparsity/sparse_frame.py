@@ -329,8 +329,10 @@ class SparseFrame(object):
         return res
 
     def __sizeof__(self):
-        return super().__sizeof__() + self.index.nbytes + \
-               self._columns.nbytes + self._data.data.nbytes + \
+        return super().__sizeof__() + \
+               self._index.memory_usage(deep=True) + \
+               self._columns.memory_usage(deep=True) + \
+               self._data.data.nbytes + \
                self._data.indptr.nbytes + self._data.indices.nbytes
 
     def _align_axis(self):
