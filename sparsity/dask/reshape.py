@@ -2,6 +2,7 @@ import sparsity as sp
 from sparsity import sparse_one_hot
 from sparsity.dask import SparseFrame
 import pandas as pd
+import numpy as np
 
 def one_hot_encode(ddf, column,
                    categories, index_col):
@@ -26,19 +27,15 @@ def one_hot_encode(ddf, column,
     -------
         sparse_one_hot: dask.Series
     """
-    idx_meta_col = index_col[0] if isinstance(index_col, list) else index_col
-    if idx_meta_col and idx_meta_col != 'index':
-        idx_meta = ddf._meta.reset_index().set_index(idx_meta_col).index
-    else:
-        idx_meta = ddf._meta.index
-
-    meta = pd.DataFrame([], columns=categories,
+    idx_meta = ddf._meta.reset_index().set_index(index_col).index[:0] \
+        if index_col else ddf._meta.index
+    meta = sp.SparseFrame(np.array([]), columns=categories,
                         index=idx_meta)
 
     dsf = ddf.map_partitions(sparse_one_hot,
                              column=column,
                              categories=categories,
                              index_col=index_col,
-                             meta=meta)
+                             meta=object)
 
     return SparseFrame(dsf.dask, dsf._name, meta, dsf.divisions)
