@@ -1,4 +1,6 @@
 from distutils.core import setup, Extension
+from setuptools import find_packages
+
 try:
     import traildb
     import numpy as np
@@ -13,14 +15,13 @@ try:
     ext_modules = cythonize([ext])
 except (ImportError, OSError):
     ext_modules = None
-
 setup(
     name='sparsity',
     version='0.4',
     ext_modules = ext_modules,
     author='Alan Hoeng',
     author_email='alan.f.hoeng@gmail.com',
-    packages=['sparsity'],
+    packages=find_packages(),
     install_requires=[
                         'pandas>=0.19.2',
                         'scipy>=0.18.1',
