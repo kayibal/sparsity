@@ -368,6 +368,9 @@ class SparseFrame(object):
                     sparse=sparse_str)
         return repr
 
+    def __array__(self):
+        return self.toarray()
+
     def head(self, n=1):
         """Display head of the sparsed frame."""
         n = min(n, len(self._index))

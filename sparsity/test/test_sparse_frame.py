@@ -123,6 +123,17 @@ def test_mutually_exclusive_join():
     assert np.all(res_ax1.data.todense() == correct), \
         "Joining along axis 1 failed."
 
+def test__array___():
+    correct = np.identity(5)
+    sf = SparseFrame(correct, index=list('ABCDE'),
+                     columns=list('ABCDE'))
+    res = np.asarray(sf)
+    assert np.all(res == correct)
+    assert isinstance(res, np.ndarray)
+
+    res = np.asarray(sf['A'])
+    assert len(res.shape) == 1
+
 
 def test_iloc():
     # name index and columns somehow so that their names are not integers
