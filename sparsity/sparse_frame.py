@@ -226,7 +226,7 @@ class SparseFrame(object):
         grouped_data = self._data[group_idx, :].T.dot(gm).T
         return SparseFrame(grouped_data, index=np.unique(by), columns=self._columns)
 
-    def join(self, other, axis=0, how='outer', level=None):
+    def join(self, other, axis=1, how='outer', level=None):
         """
         Join two tables along their indices
 
