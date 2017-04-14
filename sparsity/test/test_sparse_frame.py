@@ -52,7 +52,7 @@ def test_groupby():
     index = np.tile(np.arange(10), 10)
     data = np.vstack([np.identity(10) for _ in range(10)])
     t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
-    res = t.groupby().data.todense()
+    res = t.groupby_sum().data.todense()
     assert np.all(res == (np.identity(10) * 10))
 
 
@@ -62,7 +62,7 @@ def test_groupby_dense_random_data():
     single_tile = np.random.rand(10, 10)
     data = np.vstack([single_tile for _ in range(10)])
     t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
-    res = t.groupby().data.todense()
+    res = t.groupby_sum().data.todense()
     np.testing.assert_array_almost_equal(res, (single_tile * 10))
 
 
@@ -346,7 +346,7 @@ def test_csr_one_hot_series(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday', 'Saturday']
     sparse_frame = sparse_one_hot(sampledata(49), 'weekday', categories)
-    res = sparse_frame.groupby(np.tile(np.arange(7), 7)).data.todense()
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
     assert np.all(res == np.identity(7) * 7)
 
 
@@ -354,7 +354,7 @@ def test_csr_one_hot_series_too_much_categories(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday', 'Yesterday', 'Saturday', 'Birthday']
     sparse_frame = sparse_one_hot(sampledata(49), 'weekday', categories)
-    res = sparse_frame.groupby(np.tile(np.arange(7), 7)).data.todense()
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
 
     correct = np.identity(7) * 7
     correct = np.hstack((correct[:,:6], np.zeros((7, 1)),

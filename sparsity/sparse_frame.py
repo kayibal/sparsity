@@ -192,7 +192,11 @@ class SparseFrame(object):
             return self._data
         return self._data[:-1,:]
 
+    # backwards comptability
     def groupby(self, by=None, level=0):
+        return self.groupby_sum(by, level)
+
+    def groupby_sum(self, by=None, level=0):
         """
         Sparse groupby sum aggregation.
 
