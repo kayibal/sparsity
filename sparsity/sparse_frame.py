@@ -295,6 +295,10 @@ class SparseFrame(object):
         else:
             self._columns = new_cols
 
+    @property
+    def values(self):
+        return self.data
+
     def sort_index(self):
         """
         Sort table along index
