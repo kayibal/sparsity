@@ -1,3 +1,4 @@
+import os
 from distutils.core import setup, Extension
 from setuptools import find_packages
 
@@ -15,9 +16,14 @@ try:
     ext_modules = cythonize([ext])
 except (ImportError, OSError):
     ext_modules = None
+
+root = os.path.dirname(__file__)
+VERSION = open(os.path.join(root, 'sparsity', 'VERSION'))\
+    .read().strip()
+
 setup(
     name='sparsity',
-    version='0.5.1',
+    version=VERSION,
     ext_modules = ext_modules,
     author='Alan Hoeng',
     author_email='alan.f.hoeng@gmail.com',
