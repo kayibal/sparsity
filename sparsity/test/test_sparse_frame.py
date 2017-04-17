@@ -30,6 +30,14 @@ def sampledata():
 
     return gendata
 
+@pytest.fixture()
+def groupby_frame():
+    shuffle_idx = np.random.permutation(np.arange(100))
+    index = np.tile(np.arange(10), 10)
+    data = np.vstack([np.identity(10) for _ in range(10)])
+    t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
+    return t
+
 
 @pytest.fixture()
 def sf_midx():
@@ -47,11 +55,8 @@ def test_empty_init():
     assert sf.data.shape == (0, 2)
 
 
-def test_groupby():
-    shuffle_idx = np.random.permutation(np.arange(100))
-    index = np.tile(np.arange(10), 10)
-    data = np.vstack([np.identity(10) for _ in range(10)])
-    t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
+def test_groupby(groupby_frame):
+    t = groupby_frame
     res = t.groupby_sum().data.todense()
     assert np.all(res == (np.identity(10) * 10))
 
@@ -521,6 +526,20 @@ def test_repr():
     sf = SparseFrame(np.array([]), index=[], columns=['A', 'B'])
     res = sf.__repr__()
     assert isinstance(res, str)
+
+
+def test_groupby_agg(groupby_frame):
+    res = groupby_frame.groupby_agg(
+        level=0,
+        agg_func=lambda x: x.sum(axis=0)
+    ).data.todense()
+    assert np.all(res == (np.identity(10) * 10))
+
+    res = groupby_frame.groupby_agg(
+        level=0,
+        agg_func=lambda x: x.mean(axis=0)
+    ).data.todense()
+    assert np.all(res.round() == np.identity(10))
 
 
 def test_init_with_pandas():

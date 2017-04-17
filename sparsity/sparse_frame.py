@@ -146,9 +146,6 @@ class SparseFrame(object):
     def mean(self, *args, **kwargs):
         return self.data.mean(*args, **kwargs)
 
-    def std(self, *args, **kwargs):
-        return self.data.std(*args, **kwargs)
-
     def max(self, *args, **kwargs):
         return self.data.max(*args, **kwargs)
 
@@ -196,9 +193,19 @@ class SparseFrame(object):
     def groupby(self, by=None, level=0):
         return self.groupby_sum(by, level)
 
+    def groupby_agg(self, by=None, level=None, agg_func=None):
+        by = self._get_groupby_col(by, level)
+        groups = pd.Index(np.arange(self.shape[0])).groupby(by)
+        res = sparse.csr_matrix((len(groups), self.shape[1]))
+        new_idx = []
+        for i, (name, indizes) in enumerate(groups.items()):
+            new_idx.append(self.index.values[indizes[0]])
+            res[i] = agg_func(self.data[indizes.values,:])
+        return SparseFrame(res, index=new_idx)
+
     def groupby_sum(self, by=None, level=0):
         """
-        Sparse groupby sum aggregation.
+        Optimized sparse groupby sum aggregation.
 
         Simple operation using sparse matrix multiplication.
         Expects result to be sparse aswell.
@@ -212,23 +219,37 @@ class SparseFrame(object):
 
         Returns
         -------
-        df: sparcity.SparseFrame
+        df: sparsity.SparseFrame
             Grouped by and summed SparseFrame.
         """
-        if by is not None and by is not "index":
-            assert len(by) == self.data.shape[0]
-            by = np.array(by)
-        else:
-            if level and isinstance(self._index, pd.MultiIndex):
-                by = self.index.get_level_values(level).values
-            elif level:
-                raise ValueError("Connot use level in a non MultiIndex Frame")
-            else:
-                by = self.index.values
+        by = self._get_groupby_col(by, level)
         group_idx = by.argsort()
         gm = _create_group_matrix(by[group_idx])
         grouped_data = self._data[group_idx, :].T.dot(gm).T
         return SparseFrame(grouped_data, index=np.unique(by), columns=self._columns)
+
+
+    def _get_groupby_col(self, by, level):
+        if by is None and level is None:
+            raise ValueError("You have to supply one of 'by' and 'level'")
+        if by is not None:
+            try:
+                if by in self._columns:
+                    by = self[by].toarray()
+            except TypeError:
+                assert len(by) == self.data.shape[0]
+                by = np.array(by)
+        else:
+            if level and isinstance(self._index, pd.MultiIndex):
+                by = self.index.get_level_values(level).values
+            elif level == 0:
+                by = np.asarray(self._index)
+            elif level > 0:
+                raise ValueError(
+                    "Connot use level > 0 in a non MultiIndex Frame")
+            else:
+                by = self.index.values
+        return by
 
     def join(self, other, axis=1, how='outer', level=None):
         """
