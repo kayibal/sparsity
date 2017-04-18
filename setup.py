@@ -28,7 +28,7 @@ setup(
     author='Alan Hoeng',
     author_email='alan.f.hoeng@gmail.com',
     packages=find_packages(),
-    package_data={'sparsity': 'VERSION'},
+    package_data={'sparsity': ['VERSION']},
     install_requires=[
                         'pandas>=0.19.2',
                         'scipy>=0.18.1',
