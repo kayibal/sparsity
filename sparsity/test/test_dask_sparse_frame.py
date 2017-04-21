@@ -1,17 +1,16 @@
+import os
 import shutil
 import tempfile
-import os
 from contextlib import contextmanager
 
 import dask
+import dask.dataframe as dd
+import numpy as np
+import pandas as pd
 import pytest
 
 import sparsity as sp
 import sparsity.dask as dsp
-import pandas as pd
-import numpy as np
-import dask.dataframe as dd
-
 from sparsity.dask.reshape import one_hot_encode
 
 dask.context.set_options(get=dask.async.get_sync)
@@ -28,6 +27,10 @@ def tmpdir(dir=None):
             shutil.rmtree(dirname, ignore_errors=True)
 
 
+@pytest.fixture
+def dsf():
+    return dsp.from_pandas(pd.DataFrame(np.random.rand(10,2)),
+                           npartitions=3)
 
 def test_from_pandas():
     dsf = dsp.from_pandas(pd.DataFrame(np.random.rand(10,2)),
@@ -96,3 +99,15 @@ def test_read_npz():
         dsf = dsp.read_npz(os.path.join(tmp, '*.npz'))
         sf = dsf.compute()
     assert np.all(sf.data.toarray() == np.identity(100))
+
+
+def test_assign_column():
+    s = pd.Series(np.arange(10))
+    ds = dd.from_pandas(s, npartitions=2)
+
+    f = pd.DataFrame(np.random.rand(10, 2), columns=['a', 'b'])
+    dsf = dsp.from_pandas(f, npartitions=2)
+
+    dsf = dsf.assign(new=ds)
+    sf = dsf.compute()
+    assert np.all(sf.todense() == f.assign(new=s))
