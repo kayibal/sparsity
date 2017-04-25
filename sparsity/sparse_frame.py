@@ -156,6 +156,17 @@ class SparseFrame(object):
         return SparseFrame(self.data.copy(*args, **kwargs),
                            self.index.copy(*args, **kwargs),
                            self.columns.copy(*args, **kwargs))
+
+    def multiply(self, other):
+        """
+        To multiply row-wise 'other' should be of shape: (self.shape[0], 1)
+        To multiply col-wise 'other should be of shape: (1, self.shape[1])
+        """
+        data = self.data.multiply(other)
+        assert data.shape == self.data.shape, \
+            "Data shapes miss-match: {}, {}".format(data.shape,self.data.shape)
+        return SparseFrame(data, self.index, self.columns)
+
     def nnz(self):
         return self.data.nnz
 

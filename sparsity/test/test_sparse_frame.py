@@ -563,3 +563,22 @@ def test_init_with_pandas():
     df['A'] = 'bla'
     with pytest.raises(TypeError):
         sf = SparseFrame(df)
+
+
+def test_multiply():
+    sf = SparseFrame(np.ones(5))
+    other = np.arange(5)
+    with pytest.raises(AssertionError):
+        sf.multiply(other)
+
+    sf = SparseFrame(np.ones((5, 5)))
+
+    other = other.reshape(5, 1)
+    res = sf.multiply(other)
+    assert np.all(res.sum(axis=1) == 5 * other), "Row wise " \
+                                                     "multiplication failed"
+
+    other = other.reshape(1, 5)
+    res = sf.multiply(other)
+    assert np.all(res.sum(axis=0) == 5 * other), "Col wise " \
+                                                     "multiplication failed"
