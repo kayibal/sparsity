@@ -71,6 +71,14 @@ class SparseFrame(dask.base.Base):
     def _meta_nonempty(self):
         return _meta_nonempty(self._meta)
 
+    @property
+    def columns(self):
+        return self._meta.columns
+
+    @property
+    def index(self):
+        return self._meta.index
+
     def map_partitions(self, func, meta, *args, **kwargs):
         return map_partitions(func, self, meta, *args, **kwargs)
 
