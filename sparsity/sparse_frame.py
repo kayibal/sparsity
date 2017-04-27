@@ -108,9 +108,10 @@ class SparseFrame(object):
         else:
             dense = np.empty(shape=(0, len(self.columns)))
 
-        if self.shape[0] == 1 or self.shape[1] == 1:
-            dense = dense.reshape(-1)
-        if pandas == True:
+        if pandas:
+            if self.shape[0] == 1 or self.shape[1] == 1:
+                dense = dense.reshape(-1)
+
             if self.empty:
                 dense = pd.DataFrame([], columns=self.columns,
                                      index=self._index[:0])

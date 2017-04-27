@@ -137,7 +137,7 @@ def test__array___():
     assert isinstance(res, np.ndarray)
 
     res = np.asarray(sf['A'])
-    assert len(res.shape) == 1
+    assert res.shape[1] == 1
 
 
 def test_iloc():
@@ -565,20 +565,52 @@ def test_init_with_pandas():
         sf = SparseFrame(df)
 
 
-def test_multiply():
+def test_multiply_assertion():
     sf = SparseFrame(np.ones(5))
     other = np.arange(5)
     with pytest.raises(AssertionError):
         sf.multiply(other)
 
-    sf = SparseFrame(np.ones((5, 5)))
 
+def test_multiply_rowwise():
+    # Row wise multiplication with different types
+    sf = SparseFrame(np.ones((5, 5)))
+    other = np.arange(5)
+    msg = "Row wise multiplication failed"
+
+    # nd.array
     other = other.reshape(5, 1)
     res = sf.multiply(other)
-    assert np.all(res.sum(axis=1) == 5 * other), "Row wise " \
-                                                     "multiplication failed"
+    assert np.all(res.sum(axis=1) == 5 * other), msg
 
+    # SparseFrame
+    _other = SparseFrame(other)
+    res = sf.multiply(_other)
+    assert np.all(res.sum(axis=1) == 5 * other), msg
+
+    # csr_matrix
+    _other = _other.data
+    res = sf.multiply(_other)
+    assert np.all(res.sum(axis=1) == 5 * other), msg
+
+
+def test_multiply_colwise():
+    # Column wise multiplication with different types
+    sf = SparseFrame(np.ones((5, 5)))
+    other = np.arange(5)
+    msg = "Column wise multiplication failed"
+
+    # nd.array
     other = other.reshape(1, 5)
     res = sf.multiply(other)
-    assert np.all(res.sum(axis=0) == 5 * other), "Col wise " \
-                                                     "multiplication failed"
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+    # SparseFrame
+    _other = SparseFrame(other)
+    res = sf.multiply(_other)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+    # csr_matrix
+    _other = _other.data
+    res = sf.multiply(_other)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
