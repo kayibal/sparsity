@@ -14,7 +14,7 @@ dependencies:
         - pip install dask[dataframe]
 test:
     override:
-        - pip install git+https://github.com/datarevenue-berlin/sparsity.git
+        - pip install .
         - python -c 'import sparsity'
         - py.test --cov sparsity --cov-report xml sparsity/test
     post:
