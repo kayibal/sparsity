@@ -108,10 +108,10 @@ class SparseFrame(object):
         else:
             dense = np.empty(shape=(0, len(self.columns)))
 
-        if pandas:
-            if self.shape[0] == 1 or self.shape[1] == 1:
-                dense = dense.reshape(-1)
+        if self.shape[0] == 1 or self.shape[1] == 1:
+            dense = dense.reshape(-1)
 
+        if pandas:
             if self.empty:
                 dense = pd.DataFrame([], columns=self.columns,
                                      index=self._index[:0])
@@ -158,11 +158,21 @@ class SparseFrame(object):
                            self.index.copy(*args, **kwargs),
                            self.columns.copy(*args, **kwargs))
 
-    def multiply(self, other):
+    def multiply(self, other, axis='columns'):
         """
         To multiply row-wise 'other' should be of shape: (self.shape[0], 1)
         To multiply col-wise 'other should be of shape: (1, self.shape[1])
         """
+        try:
+            other = other.toarray()
+        except AttributeError:
+            pass
+
+        if axis in [0, 'index']:
+            other = np.asarray(other).reshape(1, -1)
+        else:
+            other = np.asarray(other).reshape(-1, 1)
+
         data = self.data.multiply(other)
         assert data.shape == self.data.shape, \
             "Data shapes miss-match: {}, {}".format(data.shape,self.data.shape)
@@ -284,7 +294,7 @@ class SparseFrame(object):
         """
         if isinstance(self._index, pd.MultiIndex)\
             or isinstance(other._index, pd.MultiIndex):
-            raise NotImplementedError()
+            raise NotImplementedError('MultiIndex not supported.')
         if not isinstance(other, SparseFrame):
             other = SparseFrame(other)
         if axis not in set([0, 1]):
