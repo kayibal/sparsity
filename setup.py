@@ -30,7 +30,7 @@ setup(
     packages=find_packages(),
     package_data={'sparsity': ['VERSION']},
     install_requires=[
-                        'pandas>=0.19.2',
+                        'pandas==0.19.*',
                         'scipy>=0.18.1',
                         'numpy>=1.12.0'
                     ],
