@@ -9,7 +9,10 @@ from functools import reduce
 
 from pandas.core.common import _default_index
 from pandas.api import types
-from pandas.indexes.base import _ensure_index
+try:
+    from pandas.indexes.base import _ensure_index
+except ImportError:
+    from pandas.core.indexes.base import _ensure_index
 from sparsity.io import to_npz, read_npz
 from scipy import sparse
 

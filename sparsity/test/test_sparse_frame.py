@@ -3,7 +3,7 @@ import os
 import datetime as dt
 import pandas as pd
 
-import dask.dataframe as dd
+#import dask.dataframe as dd
 import numpy as np
 import pytest
 from dask.async import get_sync
@@ -446,36 +446,6 @@ def test_boolean_indexing():
     assert isinstance(res, SparseFrame)
     assert res.shape == (2, 5)
     assert res.index.tolist() == [3, 4]
-
-
-def test_dask_loc(clickstream):
-    sf = dd.from_pandas(clickstream, npartitions=10) \
-        .map_partitions(
-        sparse_one_hot,
-        column='page_id',
-        categories=list('ABCDE'),
-        meta=list
-    )
-
-    res = sf.loc['2016-01-15':'2016-02-15']
-    res = SparseFrame.concat(res.compute(get=get_sync).tolist())
-    assert res.index.date.max() == dt.date(2016, 2, 15)
-    assert res.index.date.min() == dt.date(2016, 1, 15)
-
-
-def test_dask_multi_index_loc(clickstream):
-    sf = dd.from_pandas(clickstream, npartitions=10) \
-        .map_partitions(
-            sparse_one_hot,
-            column='page_id',
-            index_col=['index', 'id'],
-            categories=list('ABCDE'),
-            meta=list
-    )
-    res = sf.loc['2016-01-15':'2016-02-15']
-    res = SparseFrame.vstack(res.compute(get=get_sync).tolist())
-    assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
-    assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
 
 
 def test_rename():

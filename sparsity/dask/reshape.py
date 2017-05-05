@@ -1,7 +1,6 @@
 import sparsity as sp
 from sparsity import sparse_one_hot
 from sparsity.dask import SparseFrame
-import pandas as pd
 import numpy as np
 
 def one_hot_encode(ddf, column,
