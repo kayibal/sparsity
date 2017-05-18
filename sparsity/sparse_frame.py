@@ -362,7 +362,7 @@ class SparseFrame(object):
         index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
-    def add(self, other, how='outer'):
+    def add(self, other, how='outer', **kwargs):
         """
         Aligned addition. Adds two tables by aligning them first.
 
