@@ -362,6 +362,13 @@ class SparseFrame(object):
         index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
+    def fillna(self, value):
+        """Replace NaN values in explicitly stored data with `value`."""
+        _data = self._data.copy()
+        _data.data[np.isnan(self._data.data)] = value
+        return SparseFrame(data=_data[:-1, :],
+                           index=self.index, columns=self.columns)
+
     def add(self, other, how='outer', **kwargs):
         """
         Aligned addition. Adds two tables by aligning them first.
