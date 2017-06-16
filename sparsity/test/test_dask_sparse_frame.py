@@ -1,8 +1,5 @@
 import datetime as dt
 import os
-import shutil
-import tempfile
-from contextlib import contextmanager
 
 import dask
 import dask.dataframe as dd
@@ -16,18 +13,9 @@ import sparsity.dask as dsp
 from sparsity import sparse_one_hot
 from sparsity.dask.reshape import one_hot_encode
 
+from .conftest import tmpdir
+
 dask.context.set_options(get=dask.async.get_sync)
-
-
-@contextmanager
-def tmpdir(dir=None):
-    dirname = tempfile.mkdtemp(dir=dir)
-
-    try:
-        yield dirname
-    finally:
-        if os.path.exists(dirname):
-            shutil.rmtree(dirname, ignore_errors=True)
 
 
 @pytest.fixture
@@ -117,6 +105,19 @@ def test_one_hot(clickstream):
     sf = dsf.compute()
     assert sf.shape == (100, 5)
     assert isinstance(sf.index, pd.MultiIndex)
+
+
+def test_one_hot_disk_categories(clickstream):
+    with tmpdir() as tmp:
+        cat_path = os.path.join(tmp, 'cat.pickle')
+        pd.Series(list('ABCDE')).to_pickle(cat_path)
+        ddf = dd.from_pandas(clickstream, npartitions=10)
+        dsf = one_hot_encode(ddf, column='page_id',
+                             categories=cat_path,
+                             index_col=['index', 'id'])
+        sf = dsf.compute()
+        assert sf.shape == (100, 5)
+        assert isinstance(sf.index, pd.MultiIndex)
 
 
 def test_read_npz():

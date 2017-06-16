@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy import sparse
 
 try:
@@ -45,3 +46,12 @@ def _load_csr(loader):
                               loader['indices'],
                               loader['indptr']),
                              shape=loader['shape'])
+
+
+def _just_read_array(path):
+    if path.endswith('hdf') or path.endswith('hdf5'):
+        return pd.read_hdf(path, '/df').values
+    elif path.endswith('csv'):
+        return pd.read_csv(path).values
+    elif path.endswith('pickle'):
+        return pd.read_pickle(path).values
