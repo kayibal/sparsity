@@ -1,15 +1,16 @@
 # coding=utf-8
-import os
 import datetime as dt
-import pandas as pd
+import os
 
 #import dask.dataframe as dd
 import numpy as np
+import pandas as pd
 import pytest
-from dask.async import get_sync
 from scipy import sparse
 
 from sparsity import SparseFrame, sparse_one_hot
+
+from .conftest import tmpdir
 
 try:
     import traildb
@@ -345,6 +346,17 @@ def test_add_no_overlap(complex_example):
     res = first.add(second).add(third).sort_index()
 
     assert np.all(res.data.todense() == correct)
+
+
+def test_csr_one_hot_series_disk_categories(sampledata):
+    with tmpdir() as tmp:
+        categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+                      'Thursday', 'Friday', 'Saturday']
+        cat_path = os.path.join(tmp, 'bla.pickle')
+        pd.Series(categories).to_pickle(cat_path)
+        sparse_frame = sparse_one_hot(sampledata(49), 'weekday', cat_path)
+        res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
+        assert np.all(res == np.identity(7) * 7)
 
 
 def test_csr_one_hot_series(sampledata):

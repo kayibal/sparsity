@@ -1,19 +1,18 @@
 # coding=utf-8
 import traceback
-from functools import partial
-
-import pandas as pd
-import numpy as np
 import uuid
-from functools import reduce
+from functools import partial, reduce
 
-from pandas.core.common import _default_index
+import numpy as np
+import pandas as pd
 from pandas.api import types
+from pandas.core.common import _default_index
+
 try:
     from pandas.indexes.base import _ensure_index
 except ImportError:
     from pandas.core.indexes.base import _ensure_index
-from sparsity.io import to_npz, read_npz
+from sparsity.io import to_npz, read_npz, _just_read_array
 from scipy import sparse
 
 try:
@@ -622,6 +621,8 @@ def sparse_one_hot(df, column, categories, dtype='f8', index_col=None):
     One-hot encode a single column of a pandas.DataFrame.
     Returns a SparseFrame.
     """
+    if isinstance(categories, str):
+        categories = _just_read_array(categories)
     cols, csr = _one_hot_series_csr(categories, dtype, df[column])
 
     if not isinstance(index_col, list):

@@ -1,4 +1,8 @@
 import os
+import shutil
+import tempfile
+from contextlib import contextmanager
+
 import pytest
 
 import numpy as np
@@ -20,3 +24,14 @@ def clickstream():
         ),
     index=pd.date_range("2016-01-01", periods=100))
     return df
+
+
+@contextmanager
+def tmpdir(dir=None):
+    dirname = tempfile.mkdtemp(dir=dir)
+
+    try:
+        yield dirname
+    finally:
+        if os.path.exists(dirname):
+            shutil.rmtree(dirname, ignore_errors=True)

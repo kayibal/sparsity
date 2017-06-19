@@ -3,6 +3,9 @@ from sparsity import sparse_one_hot
 from sparsity.dask import SparseFrame
 import numpy as np
 
+from sparsity.io import _just_read_array
+
+
 def one_hot_encode(ddf, column,
                    categories, index_col):
     """
@@ -28,7 +31,13 @@ def one_hot_encode(ddf, column,
     """
     idx_meta = ddf._meta.reset_index().set_index(index_col).index[:0] \
         if index_col else ddf._meta.index
-    meta = sp.SparseFrame(np.array([]), columns=categories,
+
+    if isinstance(categories, str):
+        columns = _just_read_array(categories)
+    else:
+        columns = categories
+
+    meta = sp.SparseFrame(np.array([]), columns=columns,
                         index=idx_meta)
 
     dsf = ddf.map_partitions(sparse_one_hot,
