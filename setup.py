@@ -21,13 +21,16 @@ root = os.path.dirname(__file__)
 VERSION = open(os.path.join(root, 'sparsity', 'VERSION'))\
     .read().strip()
 
+packages = find_packages()
+packages.remove('sparsity.test')
+
 setup(
     name='sparsity',
     version=VERSION,
     ext_modules = ext_modules,
     author='Alan Hoeng',
     author_email='alan.f.hoeng@gmail.com',
-    packages=find_packages(),
+    packages=packages,
     package_data={'sparsity': ['VERSION']},
     install_requires=[
                         'pandas>=0.19.0',
