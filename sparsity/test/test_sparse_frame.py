@@ -50,6 +50,16 @@ def sf_midx():
     sf = SparseFrame(np.identity(5), index=midx, columns=cols)
     return sf
 
+@pytest.fixture()
+def sf_midx_int():
+    midx = pd.MultiIndex.from_arrays(
+        [np.concatenate([np.ones(4), np.zeros(1)]),
+         pd.date_range("2016-10-01", periods=5)]
+    )
+    cols = list('ABCDE')
+    sf = SparseFrame(np.identity(5), index=midx, columns=cols)
+    return sf
+
 
 def test_empty_init():
     sf = SparseFrame(np.array([]), index=[], columns=['A', 'B'])
@@ -177,7 +187,7 @@ def test_loc():
                   np.identity(5)[:3])
 
 
-def test_loc_multi_index(sf_midx):
+def test_loc_multi_index(sf_midx, sf_midx_int):
 
     assert sf_midx.loc['2016-10-01'].data[0, 0] == 1
 
@@ -192,6 +202,9 @@ def test_loc_multi_index(sf_midx):
     dt_slice = slice(dt.date(2016, 10, 1), dt.date(2016, 10, 3))
     assert np.all(sf_midx.loc[dt_slice].data.todense() ==
                   np.identity(5)[:3])
+
+    assert np.all(sf_midx_int.loc[1].todense() == sf_midx.data[:4,:])
+    assert np.all(sf_midx_int.loc[0].todense() == sf_midx.data[4, :])
 
 
 def test_set_index(sf_midx):

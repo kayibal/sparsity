@@ -117,11 +117,17 @@ class SparseFrame(object):
             if self.empty:
                 dense = pd.DataFrame([], columns=self.columns,
                                      index=self._index[:0])
-            elif len(dense.shape) == 1:
+            elif len(dense.shape) == 1 and \
+                    self.data.shape[1] == 1:
                 dense = pd.Series(dense, index=self.index,
                                   name=self.columns[0])
+            elif len(dense.shape) == 1 and \
+                            self.data.shape[1] > 1:
+                dense = pd.DataFrame(dense.reshape(1, -1), index=self.index,
+                                     columns=self.columns)
             else:
-                dense = pd.DataFrame(dense, index=self.index,
+                idx = np.broadcast_to(self.index, dense.shape[0])
+                dense = pd.DataFrame(dense, index=idx,
                                      columns=self.columns)
         return dense
 
