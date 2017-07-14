@@ -1,20 +1,46 @@
 # coding=utf-8
-import os
 import datetime as dt
-import pandas as pd
+import os
 
-import dask.dataframe as dd
+#import dask.dataframe as dd
+from contextlib import contextmanager
+
 import numpy as np
+import pandas as pd
 import pytest
-from dask.async import get_sync
+from moto import mock_s3
 from scipy import sparse
 
 from sparsity import SparseFrame, sparse_one_hot
+from sparsity.io import _csr_to_dict
+
+from .conftest import tmpdir
 
 try:
     import traildb
 except (ImportError, OSError):
     traildb = False
+
+
+@contextmanager
+def mock_s3_fs(bucket, data=None):
+    try:
+        m = mock_s3()
+        m.start()
+        import boto3
+        import s3fs
+        client = boto3.client('s3', region_name='eu-west-1')
+        client.create_bucket(Bucket=bucket)
+        if data is not None:
+            data = data.copy()
+            for key, value in data.items():
+                client.put_object(Bucket=bucket, Key=key, Body=value)
+        yield
+    finally:
+        if data is not None:
+            for key in data.keys():
+                client.delete_object(Bucket=bucket, Key=key)
+        m.stop()
 
 
 # 2017 starts with a sunday
@@ -30,6 +56,14 @@ def sampledata():
 
     return gendata
 
+@pytest.fixture()
+def groupby_frame():
+    shuffle_idx = np.random.permutation(np.arange(100))
+    index = np.tile(np.arange(10), 10)
+    data = np.vstack([np.identity(10) for _ in range(10)])
+    t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
+    return t
+
 
 @pytest.fixture()
 def sf_midx():
@@ -41,17 +75,24 @@ def sf_midx():
     sf = SparseFrame(np.identity(5), index=midx, columns=cols)
     return sf
 
+@pytest.fixture()
+def sf_midx_int():
+    midx = pd.MultiIndex.from_arrays(
+        [np.concatenate([np.ones(4), np.zeros(1)]),
+         pd.date_range("2016-10-01", periods=5)]
+    )
+    cols = list('ABCDE')
+    sf = SparseFrame(np.identity(5), index=midx, columns=cols)
+    return sf
+
 
 def test_empty_init():
     sf = SparseFrame(np.array([]), index=[], columns=['A', 'B'])
     assert sf.data.shape == (0, 2)
 
 
-def test_groupby():
-    shuffle_idx = np.random.permutation(np.arange(100))
-    index = np.tile(np.arange(10), 10)
-    data = np.vstack([np.identity(10) for _ in range(10)])
-    t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
+def test_groupby(groupby_frame):
+    t = groupby_frame
     res = t.groupby_sum().data.todense()
     assert np.all(res == (np.identity(10) * 10))
 
@@ -171,7 +212,7 @@ def test_loc():
                   np.identity(5)[:3])
 
 
-def test_loc_multi_index(sf_midx):
+def test_loc_multi_index(sf_midx, sf_midx_int):
 
     assert sf_midx.loc['2016-10-01'].data[0, 0] == 1
 
@@ -186,6 +227,9 @@ def test_loc_multi_index(sf_midx):
     dt_slice = slice(dt.date(2016, 10, 1), dt.date(2016, 10, 3))
     assert np.all(sf_midx.loc[dt_slice].data.todense() ==
                   np.identity(5)[:3])
+
+    assert np.all(sf_midx_int.loc[1].todense() == sf_midx.data[:4,:])
+    assert np.all(sf_midx_int.loc[0].todense() == sf_midx.data[4, :])
 
 
 def test_set_index(sf_midx):
@@ -209,6 +253,26 @@ def test_set_index(sf_midx):
     assert np.all(sf.loc[:2].data.todense() == np.identity(5)[:2])
 
     # assert np.all(sf.loc[[4, 5]].data.todense() == np.identity(5)[[3, 4]])
+
+
+def test_save_load_multiindex(sf_midx):
+    with tmpdir() as tmp:
+        # test new
+        path = os.path.join(tmp, 'sf.npz')
+        sf_midx.to_npz(path)
+        res = SparseFrame.read_npz(path)
+        assert isinstance(res.index, pd.MultiIndex)
+
+        # test backwards compatibility
+        def _to_npz_legacy(sf, filename):
+            data = _csr_to_dict(sf.data)
+            data['frame_index'] = sf.index.values
+            data['frame_columns'] = sf.columns.values
+            np.savez(filename, **data)
+
+        _to_npz_legacy(sf_midx, path)
+        res = SparseFrame.read_npz(path)
+        assert isinstance(res.index, pd.MultiIndex)
 
 
 def test_new_column_assign_array():
@@ -342,6 +406,17 @@ def test_add_no_overlap(complex_example):
     assert np.all(res.data.todense() == correct)
 
 
+def test_csr_one_hot_series_disk_categories(sampledata):
+    with tmpdir() as tmp:
+        categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+                      'Thursday', 'Friday', 'Saturday']
+        cat_path = os.path.join(tmp, 'bla.pickle')
+        pd.Series(categories).to_pickle(cat_path)
+        sparse_frame = sparse_one_hot(sampledata(49), 'weekday', cat_path)
+        res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
+        assert np.all(res == np.identity(7) * 7)
+
+
 def test_csr_one_hot_series(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday', 'Saturday']
@@ -391,6 +466,16 @@ def test_npz_io(complex_example):
     assert np.all(loaded.index == sf.index)
     assert np.all(loaded.columns == sf.columns)
     os.remove('/tmp/sparse.npz')
+
+
+def test_npz_io_s3(complex_example):
+    with mock_s3_fs('sparsity'):
+        sf, second, third = complex_example
+        sf.to_npz('s3://sparsity/sparse.npz')
+        loaded = SparseFrame.read_npz('s3://sparsity/sparse.npz')
+        assert np.all(loaded.data.todense() == sf.data.todense())
+        assert np.all(loaded.index == sf.index)
+        assert np.all(loaded.columns == sf.columns)
 
 
 def test_getitem():
@@ -443,36 +528,6 @@ def test_boolean_indexing():
     assert res.index.tolist() == [3, 4]
 
 
-def test_dask_loc(clickstream):
-    sf = dd.from_pandas(clickstream, npartitions=10) \
-        .map_partitions(
-        sparse_one_hot,
-        column='page_id',
-        categories=list('ABCDE'),
-        meta=list
-    )
-
-    res = sf.loc['2016-01-15':'2016-02-15']
-    res = SparseFrame.concat(res.compute(get=get_sync).tolist())
-    assert res.index.date.max() == dt.date(2016, 2, 15)
-    assert res.index.date.min() == dt.date(2016, 1, 15)
-
-
-def test_dask_multi_index_loc(clickstream):
-    sf = dd.from_pandas(clickstream, npartitions=10) \
-        .map_partitions(
-            sparse_one_hot,
-            column='page_id',
-            index_col=['index', 'id'],
-            categories=list('ABCDE'),
-            meta=list
-    )
-    res = sf.loc['2016-01-15':'2016-02-15']
-    res = SparseFrame.vstack(res.compute(get=get_sync).tolist())
-    assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
-    assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
-
-
 def test_rename():
     old_names = list('ABCDE')
     func = lambda x: x + '_new'
@@ -523,6 +578,20 @@ def test_repr():
     assert isinstance(res, str)
 
 
+def test_groupby_agg(groupby_frame):
+    res = groupby_frame.groupby_agg(
+        level=0,
+        agg_func=lambda x: x.sum(axis=0)
+    ).data.todense()
+    assert np.all(res == (np.identity(10) * 10))
+
+    res = groupby_frame.groupby_agg(
+        level=0,
+        agg_func=lambda x: x.mean(axis=0)
+    ).data.todense()
+    assert np.all(res.round() == np.identity(10))
+
+
 def test_init_with_pandas():
     df = pd.DataFrame(np.identity(5),
                       index=[
@@ -544,3 +613,48 @@ def test_init_with_pandas():
     df['A'] = 'bla'
     with pytest.raises(TypeError):
         sf = SparseFrame(df)
+
+
+def test_multiply_rowwise():
+    # Row wise multiplication with different types
+    sf = SparseFrame(np.ones((5, 5)))
+    other = np.arange(5)
+    msg = "Row wise multiplication failed"
+
+    # nd.array
+    other = other.reshape(1, -1)
+    res = sf.multiply(other, axis=0)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+    # SparseFrame
+    _other = SparseFrame(other)
+    res = sf.multiply(_other, axis=0)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+    # csr_matrix
+    _other = _other.data
+    res = sf.multiply(_other, axis=0)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+
+def test_multiply_colwise():
+    # Column wise multiplication with different types
+    sf = SparseFrame(np.ones((5, 5)))
+    other = np.arange(5)
+    msg = "Column wise multiplication failed"
+
+    # nd.array
+    other = other.reshape(-1, 1)
+    res = sf.multiply(other, axis=1)
+    assert np.all(res.sum(axis=1) == 5 * other), msg
+
+    # SparseFrame
+    _other = SparseFrame(other)
+    res = sf.multiply(_other, axis=1)
+    assert np.all(res.sum(axis=1) == 5 * other), msg
+
+    # csr_matrix
+    _other = _other.data
+    _other.toarray()
+    res = sf.multiply(_other, axis=1)
+    assert np.all(res.sum(axis=1) == 5 * other), msg

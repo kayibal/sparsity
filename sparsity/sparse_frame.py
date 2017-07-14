@@ -1,16 +1,18 @@
 # coding=utf-8
 import traceback
-from functools import partial
-
-import pandas as pd
-import numpy as np
 import uuid
-from functools import reduce
+from functools import partial, reduce
 
-from pandas.core.common import _default_index
+import numpy as np
+import pandas as pd
 from pandas.api import types
-from pandas.indexes.base import _ensure_index
-from sparsity.io import to_npz, read_npz
+from pandas.core.common import _default_index
+
+try:
+    from pandas.indexes.base import _ensure_index
+except ImportError:
+    from pandas.core.indexes.base import _ensure_index
+from sparsity.io import to_npz, read_npz, _just_read_array
 from scipy import sparse
 
 try:
@@ -23,7 +25,7 @@ from sparsity.indexing import _CsrILocationIndexer, _CsrLocIndexer
 
 def _is_empty(data):
     try:
-        if data.nnz == 0:
+        if any(map(lambda x: x== 0, data.shape)):
             return True
         else:
             return False
@@ -77,6 +79,7 @@ class SparseFrame(object):
                                 "\nThe error described above occurred while "
                                 "converting data to sparse matrix.")
         else:
+            self.empty = True if _is_empty(data) else False
             self._init_csr(data)
 
         # register indexers
@@ -110,15 +113,22 @@ class SparseFrame(object):
 
         if self.shape[0] == 1 or self.shape[1] == 1:
             dense = dense.reshape(-1)
-        if pandas == True:
+
+        if pandas:
             if self.empty:
                 dense = pd.DataFrame([], columns=self.columns,
                                      index=self._index[:0])
-            elif len(dense.shape) == 1:
+            elif len(dense.shape) == 1 and \
+                    self.data.shape[1] == 1:
                 dense = pd.Series(dense, index=self.index,
                                   name=self.columns[0])
+            elif len(dense.shape) == 1 and \
+                            self.data.shape[1] > 1:
+                dense = pd.DataFrame(dense.reshape(1, -1), index=self.index,
+                                     columns=self.columns)
             else:
-                dense = pd.DataFrame(dense, index=self.index,
+                idx = np.broadcast_to(self.index, dense.shape[0])
+                dense = pd.DataFrame(dense, index=idx,
                                      columns=self.columns)
         return dense
 
@@ -146,9 +156,6 @@ class SparseFrame(object):
     def mean(self, *args, **kwargs):
         return self.data.mean(*args, **kwargs)
 
-    def std(self, *args, **kwargs):
-        return self.data.std(*args, **kwargs)
-
     def max(self, *args, **kwargs):
         return self.data.max(*args, **kwargs)
 
@@ -159,6 +166,27 @@ class SparseFrame(object):
         return SparseFrame(self.data.copy(*args, **kwargs),
                            self.index.copy(*args, **kwargs),
                            self.columns.copy(*args, **kwargs))
+
+    def multiply(self, other, axis='columns'):
+        """
+        To multiply row-wise 'other' should be of shape: (self.shape[0], 1)
+        To multiply col-wise 'other should be of shape: (1, self.shape[1])
+        """
+        try:
+            other = other.toarray()
+        except AttributeError:
+            pass
+
+        if axis in [0, 'index']:
+            other = np.asarray(other).reshape(1, -1)
+        else:
+            other = np.asarray(other).reshape(-1, 1)
+
+        data = self.data.multiply(other)
+        assert data.shape == self.data.shape, \
+            "Data shapes miss-match: {}, {}".format(data.shape,self.data.shape)
+        return SparseFrame(data, self.index, self.columns)
+
     def nnz(self):
         return self.data.nnz
 
@@ -196,9 +224,19 @@ class SparseFrame(object):
     def groupby(self, by=None, level=0):
         return self.groupby_sum(by, level)
 
+    def groupby_agg(self, by=None, level=None, agg_func=None):
+        by = self._get_groupby_col(by, level)
+        groups = pd.Index(np.arange(self.shape[0])).groupby(by)
+        res = sparse.csr_matrix((len(groups), self.shape[1]))
+        new_idx = []
+        for i, (name, indizes) in enumerate(groups.items()):
+            new_idx.append(self.index.values[indizes[0]])
+            res[i] = agg_func(self.data[indizes.values,:])
+        return SparseFrame(res, index=new_idx)
+
     def groupby_sum(self, by=None, level=0):
         """
-        Sparse groupby sum aggregation.
+        Optimized sparse groupby sum aggregation.
 
         Simple operation using sparse matrix multiplication.
         Expects result to be sparse aswell.
@@ -212,23 +250,37 @@ class SparseFrame(object):
 
         Returns
         -------
-        df: sparcity.SparseFrame
+        df: sparsity.SparseFrame
             Grouped by and summed SparseFrame.
         """
-        if by is not None and by is not "index":
-            assert len(by) == self.data.shape[0]
-            by = np.array(by)
-        else:
-            if level and isinstance(self._index, pd.MultiIndex):
-                by = self.index.get_level_values(level).values
-            elif level:
-                raise ValueError("Connot use level in a non MultiIndex Frame")
-            else:
-                by = self.index.values
+        by = self._get_groupby_col(by, level)
         group_idx = by.argsort()
         gm = _create_group_matrix(by[group_idx])
         grouped_data = self._data[group_idx, :].T.dot(gm).T
         return SparseFrame(grouped_data, index=np.unique(by), columns=self._columns)
+
+
+    def _get_groupby_col(self, by, level):
+        if by is None and level is None:
+            raise ValueError("You have to supply one of 'by' and 'level'")
+        if by is not None:
+            try:
+                if by in self._columns:
+                    by = self[by].toarray()
+            except TypeError:
+                assert len(by) == self.data.shape[0]
+                by = np.array(by)
+        else:
+            if level and isinstance(self._index, pd.MultiIndex):
+                by = self.index.get_level_values(level).values
+            elif level == 0:
+                by = np.asarray(self._index)
+            elif level > 0:
+                raise ValueError(
+                    "Connot use level > 0 in a non MultiIndex Frame")
+            else:
+                by = self.index.values
+        return by
 
     def join(self, other, axis=1, how='outer', level=None):
         """
@@ -251,7 +303,7 @@ class SparseFrame(object):
         """
         if isinstance(self._index, pd.MultiIndex)\
             or isinstance(other._index, pd.MultiIndex):
-            raise NotImplementedError()
+            raise NotImplementedError('MultiIndex not supported.')
         if not isinstance(other, SparseFrame):
             other = SparseFrame(other)
         if axis not in set([0, 1]):
@@ -316,7 +368,14 @@ class SparseFrame(object):
         index = self._index[passive_sort_idx]
         return SparseFrame(data, index=index)
 
-    def add(self, other, how='outer'):
+    def fillna(self, value):
+        """Replace NaN values in explicitly stored data with `value`."""
+        _data = self._data.copy()
+        _data.data[np.isnan(self._data.data)] = value
+        return SparseFrame(data=_data[:-1, :],
+                           index=self.index, columns=self.columns)
+
+    def add(self, other, how='outer', **kwargs):
         """
         Aligned addition. Adds two tables by aligning them first.
 
@@ -569,6 +628,8 @@ def sparse_one_hot(df, column, categories, dtype='f8', index_col=None):
     One-hot encode a single column of a pandas.DataFrame.
     Returns a SparseFrame.
     """
+    if isinstance(categories, str):
+        categories = _just_read_array(categories)
     cols, csr = _one_hot_series_csr(categories, dtype, df[column])
 
     if not isinstance(index_col, list):
