@@ -512,6 +512,18 @@ class SparseFrame(object):
         new_cols, new_data = self._add_col(key, value)
         return SparseFrame(new_data, index=self.index, columns=new_cols)
 
+    def drop(self, labels, axis=0):
+        """Drop label(s) from given axis. Currently works only for columns.
+        """
+        if not isinstance(labels, (list, tuple, set)):
+            labels = [labels]
+        if axis == 1:
+            mask = np.logical_not(self.columns.isin(labels))
+            sf = self[self.columns[mask].tolist()]
+        else:
+            raise NotImplementedError
+        return sf
+
     def drop_duplicate_idx(self, **kwargs):
         """Drop rows with duplicated index."""
         mask = ~self.index.duplicated(**kwargs)
@@ -623,16 +635,6 @@ def _create_group_matrix(group_idx, dtype='f8'):
     return sparse.coo_matrix((data, (row_idx, col_idx)),
                              shape=(len(group_idx), len(group_idx.categories)),
                              dtype=dtype).tocsr()
-
-
-def _parse_legacy_soh_interface(categories, order):
-    """
-    Old interface was
-    sparse_one_hot(df, column, categories, dtype='f8', index_col=None).
-    """
-    new_order = None
-    new_categories = {categories: order}
-    return new_categories, new_order
 
 
 def sparse_one_hot(df, column=None, categories=None, dtype='f8',

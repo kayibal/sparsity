@@ -712,3 +712,23 @@ def test_multiply_colwise():
     _other.toarray()
     res = sf.multiply(_other, axis=1)
     assert np.all(res.sum(axis=1) == 5 * other), msg
+
+
+def test_drop_single_label():
+    old_names = list('ABCDE')
+    sf = SparseFrame(np.identity(5), columns=old_names)
+    sf = sf.drop('A', axis=1)
+
+    correct = np.identity(5)[:, 1:]
+    assert sf.columns.tolist() == list('BCDE')
+    np.testing.assert_array_equal(sf.data.todense(), correct)
+
+
+def test_drop_multiple_labels():
+    old_names = list('ABCDE')
+    sf = SparseFrame(np.identity(5), columns=old_names)
+    sf = sf.drop(['A', 'C'], axis=1)
+
+    correct = np.identity(5)[:, [1, 3, 4]]
+    assert sf.columns.tolist() == list('BDE')
+    np.testing.assert_array_equal(sf.data.todense(), correct)
