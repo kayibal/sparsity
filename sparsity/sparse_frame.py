@@ -637,16 +637,6 @@ def _create_group_matrix(group_idx, dtype='f8'):
                              dtype=dtype).tocsr()
 
 
-def _parse_legacy_soh_interface(categories, order):
-    """
-    Old interface was
-    sparse_one_hot(df, column, categories, dtype='f8', index_col=None).
-    """
-    new_order = None
-    new_categories = {categories: order}
-    return new_categories, new_order
-
-
 def sparse_one_hot(df, column=None, categories=None, dtype='f8',
                    index_col=None, order=None, prefixes=False):
     """
