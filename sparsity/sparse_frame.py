@@ -512,6 +512,18 @@ class SparseFrame(object):
         new_cols, new_data = self._add_col(key, value)
         return SparseFrame(new_data, index=self.index, columns=new_cols)
 
+    def drop(self, labels, axis=0):
+        """Drop label(s) from given axis. Currently works only for columns.
+        """
+        if not isinstance(labels, (list, tuple, set)):
+            labels = [labels]
+        if axis == 1:
+            mask = np.logical_not(self.columns.isin(labels))
+            sf = self[self.columns[mask].tolist()]
+        else:
+            raise NotImplementedError
+        return sf
+
     def drop_duplicate_idx(self, **kwargs):
         """Drop rows with duplicated index."""
         mask = ~self.index.duplicated(**kwargs)
