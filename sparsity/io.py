@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from scipy import sparse
 
 try:
@@ -25,16 +26,20 @@ def traildb_to_coo(db, fieldname):
 
 def to_npz(sf, filename):
     data = _csr_to_dict(sf.data)
+    data['metadata'] = \
+        {'multiindex': True if isinstance(sf.index, pd.MultiIndex) else False}
     data['frame_index'] = sf.index.values
     data['frame_columns'] = sf.columns.values
     np.savez(filename, **data)
 
+
 def read_npz(filename):
     loader = np.load(filename)
     csr_mat = _load_csr(loader)
-    idx = loader['frame_index']
+    idx = _load_idx_from_npz(loader)
     cols = loader['frame_columns']
     return (csr_mat, idx, cols)
+
 
 def _csr_to_dict(array):
     return dict(data = array.data ,indices=array.indices,
@@ -45,3 +50,23 @@ def _load_csr(loader):
                               loader['indices'],
                               loader['indptr']),
                              shape=loader['shape'])
+
+
+def _load_idx_from_npz(loader):
+    idx = loader['frame_index']
+    try:
+        if loader['metadata'][()]['multiindex']:
+            idx = pd.MultiIndex.from_tuples(idx)
+    except KeyError:
+        if all(map(lambda x: isinstance(x, tuple), idx)):
+            idx = pd.MultiIndex.from_tuples(idx)
+    return idx
+
+
+def _just_read_array(path):
+    if path.endswith('hdf') or path.endswith('hdf5'):
+        return pd.read_hdf(path, '/df').values
+    elif path.endswith('csv'):
+        return pd.read_csv(path).values
+    elif path.endswith('pickle'):
+        return pd.read_pickle(path).values
