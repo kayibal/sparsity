@@ -1,4 +1,5 @@
 import os
+import versioneer
 from distutils.core import setup, Extension
 from setuptools import find_packages
 
@@ -26,12 +27,12 @@ packages.remove('sparsity.test')
 
 setup(
     name='sparsity',
-    version=VERSION,
+    version=versioneer.get_version(),
     ext_modules = ext_modules,
     author='Alan Hoeng',
     author_email='alan.f.hoeng@gmail.com',
     packages=packages,
-    package_data={'sparsity': ['VERSION']},
+    cmdclass=versioneer.get_cmdclass(),
     install_requires=[
                         'pandas>=0.19.0',
                         'scipy>=0.18.1',
