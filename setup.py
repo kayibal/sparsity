@@ -18,10 +18,6 @@ try:
 except (ImportError, OSError):
     ext_modules = None
 
-root = os.path.dirname(__file__)
-VERSION = open(os.path.join(root, 'sparsity', 'VERSION'))\
-    .read().strip()
-
 packages = find_packages()
 packages.remove('sparsity.test')
 
