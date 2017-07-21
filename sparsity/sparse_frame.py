@@ -1,6 +1,8 @@
 # coding=utf-8
 import traceback
 import uuid
+import warnings
+from collections import OrderedDict
 from functools import partial, reduce
 
 import numpy as np
@@ -220,7 +222,7 @@ class SparseFrame(object):
             return self._data
         return self._data[:-1,:]
 
-    # backwards comptability
+    # backwards compatibility
     def groupby(self, by=None, level=0):
         return self.groupby_sum(by, level)
 
@@ -623,21 +625,60 @@ def _create_group_matrix(group_idx, dtype='f8'):
                              dtype=dtype).tocsr()
 
 
-def sparse_one_hot(df, column, categories, dtype='f8', index_col=None):
+def _parse_legacy_soh_interface(categories, order):
     """
-    One-hot encode a single column of a pandas.DataFrame.
+    Old interface was
+    sparse_one_hot(df, column, categories, dtype='f8', index_col=None).
+    """
+    new_order = None
+    new_categories = {categories: order}
+    return new_categories, new_order
+
+
+def sparse_one_hot(df, column=None, categories=None, dtype='f8',
+                   index_col=None, order=None, prefixes=False):
+    """
+    One-hot encode specified columns of a pandas.DataFrame.
     Returns a SparseFrame.
+
+    See the documentation of :func:`sparsity.dask.reshape.one_hot_encode`.
     """
-    if isinstance(categories, str):
-        categories = _just_read_array(categories)
-    cols, csr = _one_hot_series_csr(categories, dtype, df[column])
+    if column is not None:
+        warnings.warn(
+            '`column` argument of sparsity.sparse_frame.sparse_one_hot '
+            'function is deprecated.'
+        )
+        if order is not None:
+            raise ValueError('`order` and `column` arguments cannot be used '
+                             'together.')
+        categories = {column: categories}
+
+    if order is not None:
+        categories = OrderedDict([(column, categories[column])
+                                  for column in order])
+
+    new_cols = []
+    csrs = []
+    for column, column_cat in categories.items():
+        if isinstance(column_cat, str):
+            column_cat = _just_read_array(column_cat)
+        cols, csr = _one_hot_series_csr(column_cat, dtype, df[column])
+        if prefixes:
+            cols = list(map(lambda x: '{}_{}'.format(column, x), cols))
+        new_cols.extend(cols)
+        csrs.append(csr)
+    if len(set(new_cols)) < len(new_cols):
+        raise ValueError('Different columns have same categories. This would '
+                         'result in duplicated column names. '
+                         'Set `prefix` to True to manage this situation.')
+    new_data = sparse.hstack(csrs, format='csr')
 
     if not isinstance(index_col, list):
         new_index = df[index_col] if index_col else df.index
     else:
         df = df.reset_index()
         new_index = pd.MultiIndex.from_arrays(df[index_col].values.T)
-    return SparseFrame(csr, index=new_index, columns=cols)
+    return SparseFrame(new_data, index=new_index, columns=new_cols)
 
 
 def _one_hot_series_csr(categories, dtype, oh_col):
