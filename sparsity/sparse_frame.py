@@ -685,7 +685,7 @@ def sparse_one_hot(df, column=None, categories=None, dtype='f8',
 
 def _one_hot_series_csr(categories, dtype, oh_col):
     if types.is_categorical_dtype(oh_col):
-        cat = oh_col
+        cat = oh_col.cat
     else:
         s = oh_col
         cat = pd.Categorical(s, np.asarray(categories))
