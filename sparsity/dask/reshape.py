@@ -9,7 +9,8 @@ from sparsity.dask import SparseFrame
 
 
 def one_hot_encode(ddf, column=None, categories=None, index_col=None,
-                   order=None, prefixes=False):
+                   order=None, prefixes=False,
+                   ignore_cat_order_mismatch=False):
     """
     Sparse one hot encoding of dask.DataFrame.
 
@@ -46,6 +47,7 @@ def one_hot_encode(ddf, column=None, categories=None, index_col=None,
         [col1_cat11, col1_cat12, col2_cat21, col2_cat22, ...].
     column: DEPRECATED
         Kept only for backward compatibility.
+    ignore_cat_order_mismatch: str, 'raise' or 'ignore'
 
     Returns
     -------
@@ -71,7 +73,9 @@ def one_hot_encode(ddf, column=None, categories=None, index_col=None,
     columns = sparse_one_hot(ddf._meta,
                              categories=categories,
                              index_col=index_col,
-                             prefixes=prefixes).columns
+                             prefixes=prefixes,
+                             ignore_cat_order_mismatch=ignore_cat_order_mismatch
+                             ).columns
     meta = sp.SparseFrame(np.array([]), columns=columns,
                           index=idx_meta)
 
@@ -79,6 +83,7 @@ def one_hot_encode(ddf, column=None, categories=None, index_col=None,
                              categories=categories,
                              index_col=index_col,
                              prefixes=prefixes,
+                             ignore_cat_order_mismatch=ignore_cat_order_mismatch,
                              meta=object)
 
     return SparseFrame(dsf.dask, dsf._name, meta, dsf.divisions)

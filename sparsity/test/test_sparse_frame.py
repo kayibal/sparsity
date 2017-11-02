@@ -481,14 +481,21 @@ def test_csr_one_hot_series_categorical(sampledata, weekdays, weekdays_abbr):
     categories = {'weekday': weekdays,
                   'weekday_abbr': weekdays_abbr}
 
+    with pytest.raises(ValueError):
+        sparse_frame = sparse_one_hot(sampledata(49, categorical=True),
+                                      categories=categories,
+                                      order=['weekday', 'weekday_abbr'],
+                                      ignore_cat_order_mismatch=False)
+
     sparse_frame = sparse_one_hot(sampledata(49, categorical=True),
                                   categories=categories,
-                                  order=['weekday', 'weekday_abbr'])
+                                  order=['weekday', 'weekday_abbr'],
+                                  ignore_cat_order_mismatch=True)
 
-    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)) \
+        .todense()[weekdays + weekdays_abbr].values
     assert np.all(res == correct)
-    assert all(sparse_frame.columns == (weekdays + weekdays_abbr))
-
+    assert set(sparse_frame.columns) == set(weekdays + weekdays_abbr)
 
 
 def test_csr_one_hot_series_other_order(sampledata, weekdays, weekdays_abbr):

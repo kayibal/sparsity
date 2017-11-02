@@ -638,7 +638,8 @@ def _create_group_matrix(group_idx, dtype='f8'):
 
 
 def sparse_one_hot(df, column=None, categories=None, dtype='f8',
-                   index_col=None, order=None, prefixes=False):
+                   index_col=None, order=None, prefixes=False,
+                   ignore_cat_order_mismatch=False):
     """
     One-hot encode specified columns of a pandas.DataFrame.
     Returns a SparseFrame.
@@ -664,7 +665,10 @@ def sparse_one_hot(df, column=None, categories=None, dtype='f8',
     for column, column_cat in categories.items():
         if isinstance(column_cat, str):
             column_cat = _just_read_array(column_cat)
-        cols, csr = _one_hot_series_csr(column_cat, dtype, df[column])
+        cols, csr = _one_hot_series_csr(
+            column_cat, dtype, df[column],
+            ignore_cat_order_mismatch=ignore_cat_order_mismatch
+        )
         if prefixes:
             cols = list(map(lambda x: '{}_{}'.format(column, x), cols))
         new_cols.extend(cols)
@@ -683,9 +687,13 @@ def sparse_one_hot(df, column=None, categories=None, dtype='f8',
     return SparseFrame(new_data, index=new_index, columns=new_cols)
 
 
-def _one_hot_series_csr(categories, dtype, oh_col):
+def _one_hot_series_csr(categories, dtype, oh_col,
+                        ignore_cat_order_mismatch=False):
     if types.is_categorical_dtype(oh_col):
         cat = oh_col.cat
+        _check_categories_order(cat, categories, oh_col,
+                                ignore_cat_order_mismatch)
+
     else:
         s = oh_col
         cat = pd.Categorical(s, np.asarray(categories))
@@ -703,3 +711,23 @@ def _one_hot_series_csr(categories, dtype, oh_col):
                              shape=(n_samples, n_features),
                              dtype=dtype).tocsr()
     return cat.categories.values, data
+
+
+def _check_categories_order(cat, categories, oh_col,
+                            ignore_cat_order_mismatch):
+
+    if list(categories) == list(cat.categories):
+        return
+
+    if set(categories) != set(cat.categories) \
+            or not ignore_cat_order_mismatch:
+
+        mismatch_type = 'order' if set(categories) == set(cat.categories) \
+            else 'set'
+
+        raise ValueError(
+            "Got categorical column {column_name} whose categories "
+            "{mismatch_type} doesn't match categories {mismatch_type} "
+            "given as argument to this function.".format(
+                column_name=oh_col.name, mismatch_type=mismatch_type
+            ))
