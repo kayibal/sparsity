@@ -203,6 +203,15 @@ class SparseFrame(object):
                                index=self.index,
                                columns=self.columns[idx])
 
+    def _take(self, *args, **kwargs):
+        """
+        This function is to mimic pandas api (0.21.0)
+        and support indexing.
+
+        See https://github.com/pandas-dev/pandas/commit/458c1dc81b7e6f90180b06179ac91d9ed868cb05
+        """
+        return self.take(*args, **kwargs)
+
     def _xs(self, key, *args, **kwargs):
         """Used for label based indexing."""
         loc = self.index.get_loc(key)
@@ -537,7 +546,7 @@ class SparseFrame(object):
         for key in item:
             idx.append(self.columns.get_loc(key))
         return SparseFrame(self.data[:,idx], index=self.index,
-                           columns=[item])
+                           columns=item)
 
     def dropna(self):
         """Drop nans from index."""
