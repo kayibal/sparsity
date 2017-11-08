@@ -691,7 +691,7 @@ def _one_hot_series_csr(categories, dtype, oh_col,
                         ignore_cat_order_mismatch=False):
     if types.is_categorical_dtype(oh_col):
         cat = oh_col.cat
-        _check_categories_order(cat, categories, oh_col,
+        _check_categories_order(cat.categories, categories, oh_col.name,
                                 ignore_cat_order_mismatch)
 
     else:
@@ -713,21 +713,26 @@ def _one_hot_series_csr(categories, dtype, oh_col,
     return cat.categories.values, data
 
 
-def _check_categories_order(cat, categories, oh_col,
+def _check_categories_order(categories1, categories2, categorical_column_name,
                             ignore_cat_order_mismatch):
+    """Check if two lists of categories differ. If they have different
+    elements, raise an exception. If they differ only by order of elements,
+    raise an issue unless ignore_cat_order_mismatch is set."""
 
-    if list(categories) == list(cat.categories):
+    if categories2 is None or list(categories2) == list(categories1):
         return
 
-    if set(categories) != set(cat.categories) \
-            or not ignore_cat_order_mismatch:
+    if set(categories2) == set(categories1):
+        mismatch_type = 'order'
+    else:
+        mismatch_type = 'set'
 
-        mismatch_type = 'order' if set(categories) == set(cat.categories) \
-            else 'set'
-
+    if mismatch_type == 'set' or not ignore_cat_order_mismatch:
         raise ValueError(
             "Got categorical column {column_name} whose categories "
             "{mismatch_type} doesn't match categories {mismatch_type} "
             "given as argument to this function.".format(
-                column_name=oh_col.name, mismatch_type=mismatch_type
-            ))
+                column_name=categorical_column_name,
+                mismatch_type=mismatch_type
+            )
+        )

@@ -474,20 +474,84 @@ def test_csr_one_hot_series(sampledata, weekdays, weekdays_abbr):
     assert all(sparse_frame.columns == (weekdays + weekdays_abbr))
 
 
-def test_csr_one_hot_series_categorical(sampledata, weekdays, weekdays_abbr):
+def test_csr_one_hot_series_categorical_same_order(sampledata, weekdays,
+                                                   weekdays_abbr):
     correct = np.hstack((np.identity(7) * 7,
                          np.identity(7) * 7))
 
-    categories = {'weekday': weekdays,
-                  'weekday_abbr': weekdays_abbr}
+    data = sampledata(49, categorical=True)
+
+    categories = {'weekday': data['weekday'].cat.categories.tolist(),
+                  'weekday_abbr': data['weekday_abbr'].cat.categories.tolist()}
+
+    sparse_frame = sparse_one_hot(data,
+                                  categories=categories,
+                                  order=['weekday', 'weekday_abbr'],
+                                  ignore_cat_order_mismatch=False)
+
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)) \
+        .todense()[weekdays + weekdays_abbr].values
+    assert np.all(res == correct)
+    assert set(sparse_frame.columns) == set(weekdays + weekdays_abbr)
+
+
+def test_csr_one_hot_series_categorical_different_order(sampledata, weekdays,
+                                                        weekdays_abbr):
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    data = sampledata(49, categorical=True)
+
+    categories = {
+        'weekday': data['weekday'].cat.categories.tolist()[::-1],
+        'weekday_abbr': data['weekday_abbr'].cat.categories.tolist()[::-1]
+    }
 
     with pytest.raises(ValueError):
-        sparse_frame = sparse_one_hot(sampledata(49, categorical=True),
+        sparse_frame = sparse_one_hot(data,
                                       categories=categories,
                                       order=['weekday', 'weekday_abbr'],
                                       ignore_cat_order_mismatch=False)
 
-    sparse_frame = sparse_one_hot(sampledata(49, categorical=True),
+
+def test_csr_one_hot_series_categorical_different_order_ignore(
+        sampledata, weekdays, weekdays_abbr):
+
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    data = sampledata(49, categorical=True)
+
+    categories = {
+        'weekday': data['weekday'].cat.categories.tolist()[::-1],
+        'weekday_abbr': data['weekday_abbr'].cat.categories.tolist()[::-1]
+    }
+
+    sparse_frame = sparse_one_hot(data,
+                                  categories=categories,
+                                  order=['weekday', 'weekday_abbr'],
+                                  ignore_cat_order_mismatch=True)
+
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)) \
+        .todense()[weekdays + weekdays_abbr].values
+    assert np.all(res == correct)
+    assert set(sparse_frame.columns) == set(weekdays + weekdays_abbr)
+
+
+def test_csr_one_hot_series_categorical_no_categories(
+        sampledata, weekdays, weekdays_abbr):
+
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    data = sampledata(49, categorical=True)
+
+    categories = {
+        'weekday': None,
+        'weekday_abbr': None
+    }
+
+    sparse_frame = sparse_one_hot(data,
                                   categories=categories,
                                   order=['weekday', 'weekday_abbr'],
                                   ignore_cat_order_mismatch=True)
