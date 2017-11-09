@@ -647,7 +647,8 @@ def _create_group_matrix(group_idx, dtype='f8'):
 
 
 def sparse_one_hot(df, column=None, categories=None, dtype='f8',
-                   index_col=None, order=None, prefixes=False):
+                   index_col=None, order=None, prefixes=False,
+                   ignore_cat_order_mismatch=False):
     """
     One-hot encode specified columns of a pandas.DataFrame.
     Returns a SparseFrame.
@@ -673,7 +674,10 @@ def sparse_one_hot(df, column=None, categories=None, dtype='f8',
     for column, column_cat in categories.items():
         if isinstance(column_cat, str):
             column_cat = _just_read_array(column_cat)
-        cols, csr = _one_hot_series_csr(column_cat, dtype, df[column])
+        cols, csr = _one_hot_series_csr(
+            column_cat, dtype, df[column],
+            ignore_cat_order_mismatch=ignore_cat_order_mismatch
+        )
         if prefixes:
             cols = list(map(lambda x: '{}_{}'.format(column, x), cols))
         new_cols.extend(cols)
@@ -692,9 +696,13 @@ def sparse_one_hot(df, column=None, categories=None, dtype='f8',
     return SparseFrame(new_data, index=new_index, columns=new_cols)
 
 
-def _one_hot_series_csr(categories, dtype, oh_col):
+def _one_hot_series_csr(categories, dtype, oh_col,
+                        ignore_cat_order_mismatch=False):
     if types.is_categorical_dtype(oh_col):
-        cat = oh_col
+        cat = oh_col.cat
+        _check_categories_order(cat.categories, categories, oh_col.name,
+                                ignore_cat_order_mismatch)
+
     else:
         s = oh_col
         cat = pd.Categorical(s, np.asarray(categories))
@@ -712,3 +720,28 @@ def _one_hot_series_csr(categories, dtype, oh_col):
                              shape=(n_samples, n_features),
                              dtype=dtype).tocsr()
     return cat.categories.values, data
+
+
+def _check_categories_order(categories1, categories2, categorical_column_name,
+                            ignore_cat_order_mismatch):
+    """Check if two lists of categories differ. If they have different
+    elements, raise an exception. If they differ only by order of elements,
+    raise an issue unless ignore_cat_order_mismatch is set."""
+
+    if categories2 is None or list(categories2) == list(categories1):
+        return
+
+    if set(categories2) == set(categories1):
+        mismatch_type = 'order'
+    else:
+        mismatch_type = 'set'
+
+    if mismatch_type == 'set' or not ignore_cat_order_mismatch:
+        raise ValueError(
+            "Got categorical column {column_name} whose categories "
+            "{mismatch_type} doesn't match categories {mismatch_type} "
+            "given as argument to this function.".format(
+                column_name=categorical_column_name,
+                mismatch_type=mismatch_type
+            )
+        )

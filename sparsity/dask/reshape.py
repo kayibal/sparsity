@@ -9,7 +9,8 @@ from sparsity.dask import SparseFrame
 
 
 def one_hot_encode(ddf, column=None, categories=None, index_col=None,
-                   order=None, prefixes=False):
+                   order=None, prefixes=False,
+                   ignore_cat_order_mismatch=False):
     """
     Sparse one hot encoding of dask.DataFrame.
 
@@ -21,8 +22,11 @@ def one_hot_encode(ddf, column=None, categories=None, index_col=None,
     ddf: dask.DataFrame
         e.g. the clickstream
     categories: dict
-        Maps column name -> iterable of possible category values.
-        See description of `order`.
+        Maps ``column name`` -> ``iterable of possible category values``.
+        Can be also ``column name`` -> ``None`` if this column is already
+        of categorical dtype.
+        This argument decides which column(s) will be encoded.
+        See description of `order` and `ignore_cat_order_mismatch`.
     index_col: str | iterable
         which columns to use as index
     order: iterable
@@ -46,6 +50,16 @@ def one_hot_encode(ddf, column=None, categories=None, index_col=None,
         [col1_cat11, col1_cat12, col2_cat21, col2_cat22, ...].
     column: DEPRECATED
         Kept only for backward compatibility.
+    ignore_cat_order_mismatch: bool
+        If a column being one-hot encoded is of categorical dtype, it has
+        its categories already predefined, so we don't need to explicitly pass
+        them in `categories` argument (see this argument's description).
+        However, if we pass them, they may be different than ones defined in
+        column.cat.categories. In such a situation, a ValueError will be
+        raised. However, if only orders of categories are different (but sets
+        of elements are same), you may specify ignore_cat_order_mismatch=True
+        to suppress this error. In such a situation, column's predefined
+        categories will be used.
 
     Returns
     -------
@@ -71,7 +85,9 @@ def one_hot_encode(ddf, column=None, categories=None, index_col=None,
     columns = sparse_one_hot(ddf._meta,
                              categories=categories,
                              index_col=index_col,
-                             prefixes=prefixes).columns
+                             prefixes=prefixes,
+                             ignore_cat_order_mismatch=ignore_cat_order_mismatch
+                             ).columns
     meta = sp.SparseFrame(np.array([]), columns=columns,
                           index=idx_meta)
 
@@ -79,6 +95,7 @@ def one_hot_encode(ddf, column=None, categories=None, index_col=None,
                              categories=categories,
                              index_col=index_col,
                              prefixes=prefixes,
+                             ignore_cat_order_mismatch=ignore_cat_order_mismatch,
                              meta=object)
 
     return SparseFrame(dsf.dask, dsf._name, meta, dsf.divisions)
