@@ -1,4 +1,9 @@
+from io import BytesIO
+from urllib.parse import urlparse
+
 import numpy as np
+import pandas as pd
+from s3fs import S3FileSystem
 from scipy import sparse
 
 try:
@@ -6,6 +11,30 @@ try:
     from sparsity._traildb import traildb_coo_repr_func
 except (ImportError, OSError):
     TrailDB = False
+
+
+class LocalFileSystem():
+
+    open = open
+
+FILE_SYSTEMS = {
+    '': LocalFileSystem,
+    'file': LocalFileSystem
+}
+
+try:
+    import s3fs
+    FILE_SYSTEMS['s3'] = S3FileSystem
+except ImportError:
+    pass
+
+try:
+    import gcsfs
+    FILE_SYSTEMS['gs'] = gcsfs.GCSFileSystem
+    FILE_SYSTEMS['gcs'] = gcsfs.GCSFileSystem
+except ImportError:
+    pass
+
 
 def traildb_to_coo(db, fieldname):
     if not TrailDB:
@@ -23,18 +52,54 @@ def traildb_to_coo(db, fieldname):
     return uuids, timestamps, cols,\
         sparse.coo_matrix((np.ones(num_events), (r_idx, c_idx)))
 
-def to_npz(sf, filename):
+
+def to_npz(sf, filename, block_size=None, storage_options=None):
     data = _csr_to_dict(sf.data)
+    data['metadata'] = \
+        {'multiindex': True if isinstance(sf.index, pd.MultiIndex) else False}
     data['frame_index'] = sf.index.values
     data['frame_columns'] = sf.columns.values
-    np.savez(filename, **data)
+    if not filename.endswith('.npz'):
+        filename += '.npz'
 
-def read_npz(filename):
-    loader = np.load(filename)
+    protocol = urlparse(filename).scheme or 'file'
+    if protocol == 'file':
+        fp = open(filename, 'wb')
+        np.savez(fp, **data)
+    else:
+        if block_size is None:
+            block_size = 2 ** 20 * 100  # 100 MB
+        buffer = BytesIO()
+        np.savez(buffer, **data)
+        buffer.seek(0)
+        _save_remote(buffer, filename, block_size, storage_options)
+
+
+def _save_remote(buffer, filename, block_size=None, storage_options=None):
+    if storage_options is None:
+        storage_options = {}
+    protocol = urlparse(filename).scheme or 'file'
+    fs = FILE_SYSTEMS[protocol](**storage_options)
+    with fs.open(filename, 'wb', block_size) as remote_f:
+        while True:
+            data = buffer.read(block_size)
+            if len(data) == 0:
+                break
+            remote_f.write(data)
+
+def read_npz(filename, storage_options=None):
+    if storage_options is None:
+        storage_options = {}
+    protocol = urlparse(filename).scheme or 'file'
+    open_f = FILE_SYSTEMS[protocol](**storage_options).open
+    fp = open_f(filename, 'rb')
+
+    loader = np.load(fp)
     csr_mat = _load_csr(loader)
-    idx = loader['frame_index']
+    idx = _load_idx_from_npz(loader)
     cols = loader['frame_columns']
     return (csr_mat, idx, cols)
+
 
 def _csr_to_dict(array):
     return dict(data = array.data ,indices=array.indices,
@@ -45,3 +110,23 @@ def _load_csr(loader):
                               loader['indices'],
                               loader['indptr']),
                              shape=loader['shape'])
+
+
+def _load_idx_from_npz(loader):
+    idx = loader['frame_index']
+    try:
+        if loader['metadata'][()]['multiindex']:
+            idx = pd.MultiIndex.from_tuples(idx)
+    except KeyError:
+        if all(map(lambda x: isinstance(x, tuple), idx)):
+            idx = pd.MultiIndex.from_tuples(idx)
+    return idx
+
+
+def _just_read_array(path):
+    if path.endswith('hdf') or path.endswith('hdf5'):
+        return pd.read_hdf(path, '/df').values
+    elif path.endswith('csv'):
+        return pd.read_csv(path).values
+    elif path.endswith('pickle'):
+        return pd.read_pickle(path).values
