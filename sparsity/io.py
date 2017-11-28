@@ -1,8 +1,8 @@
 from io import BytesIO
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
-from s3fs import S3FileSystem
 from scipy import sparse
 
 try:
@@ -10,6 +10,32 @@ try:
     from sparsity._traildb import traildb_coo_repr_func
 except (ImportError, OSError):
     TrailDB = False
+
+_filesystems = {}
+
+try:
+    from dask.bytes.local import LocalFileSystem
+except ImportError:
+
+    class LocalFileSystem:
+        open = open
+
+_filesystems[''] = LocalFileSystem
+_filesystems['file'] = LocalFileSystem
+
+try:
+    import s3fs
+    _filesystems['s3'] = s3fs.S3FileSystem
+except ImportError:
+    pass
+
+try:
+    import gcsfs
+    _filesystems['gs'] = gcsfs.GCSFileSystem
+    _filesystems['gcs'] = gcsfs.GCSFileSystem
+except ImportError:
+    pass
+
 
 def traildb_to_coo(db, fieldname):
     if not TrailDB:
@@ -28,7 +54,7 @@ def traildb_to_coo(db, fieldname):
         sparse.coo_matrix((np.ones(num_events), (r_idx, c_idx)))
 
 
-def to_npz(sf, filename, block_size=None):
+def to_npz(sf, filename, block_size=None, storage_options=None):
     data = _csr_to_dict(sf.data)
     data['metadata'] = \
         {'multiindex': True if isinstance(sf.index, pd.MultiIndex) else False}
@@ -36,42 +62,54 @@ def to_npz(sf, filename, block_size=None):
     data['frame_columns'] = sf.columns.values
     if not filename.endswith('.npz'):
         filename += '.npz'
-    if not filename.startswith('s3://'):
-        fp = open(filename, 'wb')
-        np.savez(fp, **data)
+
+    protocol = urlparse(filename).scheme or 'file'
+    if protocol == 'file':
+        with open(filename, 'wb') as fp:
+            np.savez(fp, **data)
     else:
-        _save_npz_s3(data, filename, block_size)
+        if block_size is None:
+            block_size = 2 ** 20 * 100  # 100 MB
+        buffer = BytesIO()
+        np.savez(buffer, **data)
+        buffer.seek(0)
+        _save_remote(buffer, filename, block_size, storage_options)
 
 
-def _save_npz_s3(data, filename, block_size=None):
-    if block_size is None:
-        block_size = 2**20 * 100  # 100 MB
-    buffer = BytesIO()
-    np.savez(buffer, **data)
-    buffer.seek(0)
-    fs = S3FileSystem()
-    with fs.open(filename, 'wb', block_size) as s3f:
+def _save_remote(buffer, filename, block_size=None, storage_options=None):
+    if storage_options is None:
+        storage_options = {}
+    protocol = urlparse(filename).scheme
+    fs = _filesystems[protocol](**storage_options)
+    with fs.open(filename, 'wb', block_size) as remote_f:
         while True:
             data = buffer.read(block_size)
             if len(data) == 0:
                 break
-            s3f.write(data)
+            remote_f.write(data)
 
-def read_npz(filename):
-    open_f = open if not filename.startswith('s3://') \
-        else S3FileSystem().open
+
+def read_npz(filename, storage_options=None):
+    if storage_options is None:
+        storage_options = {}
+    protocol = urlparse(filename).scheme or 'file'
+    open_f = _filesystems[protocol](**storage_options).open
     fp = open_f(filename, 'rb')
 
     loader = np.load(fp)
-    csr_mat = _load_csr(loader)
-    idx = _load_idx_from_npz(loader)
-    cols = loader['frame_columns']
-    return (csr_mat, idx, cols)
+    try:
+        csr_mat = _load_csr(loader)
+        idx = _load_idx_from_npz(loader)
+        cols = loader['frame_columns']
+    finally:
+        loader.close()
+    return csr_mat, idx, cols
 
 
 def _csr_to_dict(array):
     return dict(data = array.data ,indices=array.indices,
                 indptr =array.indptr, shape=array.shape)
+
 
 def _load_csr(loader):
     return sparse.csr_matrix((loader['data'],

@@ -377,7 +377,7 @@ class SparseFrame(object):
         passive_sort_idx = np.argsort(self._index)
         data = self._data[passive_sort_idx]
         index = self._index[passive_sort_idx]
-        return SparseFrame(data, index=index)
+        return SparseFrame(data, index=index, columns=self.columns)
 
     def fillna(self, value):
         """Replace NaN values in explicitly stored data with `value`."""
@@ -551,7 +551,11 @@ class SparseFrame(object):
             item = [item]
         idx = []
         for key in item:
-            idx.append(self.columns.get_loc(key))
+            loc = self.columns.get_loc(key)
+            # weired error appears here with movielens dataset
+            if not isinstance(loc, int):
+                loc = self.columns.tolist().index(key)
+            idx.append(loc)
         return SparseFrame(self.data[:,idx], index=self.index,
                            columns=item)
 
@@ -596,11 +600,11 @@ class SparseFrame(object):
                            columns=frames[0].columns)
 
     @classmethod
-    def read_npz(cls, filename):
+    def read_npz(cls, filename, storage_options=None):
         """"Read from numpy npz format."""
-        return cls(*read_npz(filename))
+        return cls(*read_npz(filename, storage_options))
 
-    def to_npz(self, filename, block_size=None):
+    def to_npz(self, filename, block_size=None, storage_options=None):
         """Save to numpy npz format.
 
         Parameters
@@ -608,14 +612,16 @@ class SparseFrame(object):
         filename: str
             path to local file ot s3 path starting with `s3://`
         block_size: int
-            block size in bytes only has effect if uploading to s3
-            if set to None default block will be 100MB
-
+            block size in bytes only has effect if writing to remote storage
+            if set to None defaults to 100MB
+        storage_options: dict
+            additional parameters to pass to FileSystem class
+            only useful when writing to remote storages.
         Returns
         -------
             None
         """
-        to_npz(self, filename, block_size)
+        to_npz(self, filename, block_size, storage_options)
 
 
 def _axis_is_empty(csr, axis=0):
