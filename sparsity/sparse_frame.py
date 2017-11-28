@@ -386,18 +386,25 @@ class SparseFrame(object):
         return SparseFrame(data=_data[:-1, :],
                            index=self.index, columns=self.columns)
 
-    def add(self, other, how='outer', **kwargs):
+    def add(self, other, how='outer', fill_value=0, **kwargs):
         """
         Aligned addition. Adds two tables by aligning them first.
 
         Parameters
         ----------
             other: sparsity.SparseFrame
+            fill_value: float
+                fill value if other frame is not exactly the same shape
+                for sparse data the only sensible fill value is 0 passing
+                any other value will result in a ValueError
 
         Returns
         -------
             added: sparsity.SparseFrame
         """
+        if fill_value != 0:
+            raise ValueError("Only 0 is accepted as fill_value "
+                             "for sparse data.")
         assert np.all(self._columns == other.columns)
         data, new_idx = _aligned_csr_elop(self._data, other._data,
                                           self.index, other.index,
@@ -611,8 +618,20 @@ class SparseFrame(object):
         to_npz(self, filename, block_size)
 
 
+def _axis_is_empty(csr, axis=0):
+    return csr.shape[axis] == 0
+
+
 def _aligned_csr_elop(a, b, a_idx, b_idx, op='_plus_', how='outer'):
     """Assume data == 0 at loc[-1]"""
+
+    # handle emtpy cases
+    if _axis_is_empty(a):
+        return b[:-1,:], b_idx
+
+    if _axis_is_empty(b):
+        return a[:-1,:], a_idx
+
     join_idx, lidx, ridx = a_idx.join(b_idx, return_indexers=True, how=how)
 
     if lidx is None:

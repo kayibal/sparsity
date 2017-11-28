@@ -875,3 +875,17 @@ def test_drop_multiple_labels():
     correct = np.identity(5)[:, [1, 3, 4]]
     assert sf.columns.tolist() == list('BDE')
     np.testing.assert_array_equal(sf.data.todense(), correct)
+
+
+def test_empty_elemwise():
+    sf_empty = SparseFrame(np.array([]), columns=['A', 'B'])
+    sf = SparseFrame(np.identity(2), columns=['A', 'B'])
+
+    res = sf_empty.add(sf).data.todense()
+    assert np.all(res == sf.data.todense())
+
+    res = sf.add(sf_empty).data.todense()
+    assert np.all(res == sf.data.todense())
+
+    with pytest.raises(ValueError):
+        res = sf.add(sf_empty, fill_value=None)
