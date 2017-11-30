@@ -79,6 +79,12 @@ def sampledata():
 
 
 @pytest.fixture()
+def sample_frame_labels():
+    return SparseFrame(np.identity(5),
+                       columns = list('ABCDE'),
+                       index = list('VWXYZ'))
+
+@pytest.fixture()
 def weekdays():
     return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
             'Friday', 'Saturday']
@@ -875,6 +881,71 @@ def test_drop_multiple_labels():
     correct = np.identity(5)[:, [1, 3, 4]]
     assert sf.columns.tolist() == list('BDE')
     np.testing.assert_array_equal(sf.data.todense(), correct)
+
+
+def test_label_based_indexing_col(sample_frame_labels):
+    key = ['A', 'B']
+    results = [
+        sample_frame_labels[key],
+        sample_frame_labels.loc[:, key],
+        sample_frame_labels.reindex(columns=key)
+    ]
+    for res in results:
+        np.testing.assert_array_equal(
+            res.data.todense(), np.identity(5)[:, :2])
+        assert (res.index == pd.Index(list('VWXYZ'))).all()
+        assert (res.columns == pd.Index(list('AB'))).all()
+
+
+def test_label_based_indexing_idx(sample_frame_labels):
+    key = ['X', 'Y', 'Z']
+    results = [
+        sample_frame_labels.loc[key],
+        sample_frame_labels.loc[key, :],
+        sample_frame_labels.reindex(labels=key, axis=0),
+        sample_frame_labels.reindex(index=key)
+    ]
+    for res in results:
+        np.testing.assert_array_equal(
+            res.data.todense(), np.identity(5)[2:, :])
+        assert (res.index == pd.Index(['X', 'Y', 'Z'])).all()
+        assert (res.columns == pd.Index(list('ABCDE'))).all()
+
+
+def test_label_based_col_and_idx(sample_frame_labels):
+    key = ['V', 'W'], ['A', 'B']
+    results = [
+        sample_frame_labels.loc[key],
+        sample_frame_labels.loc[['V', 'W'], ['A', 'B']],
+        sample_frame_labels.reindex(index=key[0], columns=key[1])
+    ]
+    for res in results:
+        np.testing.assert_array_equal(
+            res.data.todense(), np.identity(2))
+        assert (res.index == pd.Index(list('VW'))).all()
+        assert (res.columns == pd.Index(list('AB'))).all()
+
+
+def test_indexing_boolean_label_col_and_idx(sample_frame_labels):
+    res = sample_frame_labels.loc[[True, True, False, False, False], ['A', 'B']]
+    np.testing.assert_array_equal(
+        res.data.todense(), np.identity(2))
+    assert (res.index == pd.Index(list('VW'))).all()
+    assert (res.columns == pd.Index(list('AB'))).all()
+
+    res = sample_frame_labels.loc[['V', 'W'], [True, True, False, False, False]]
+    np.testing.assert_array_equal(
+        res.data.todense(), np.identity(2))
+    assert (res.index == pd.Index(list('VW'))).all()
+    assert (res.columns == pd.Index(list('AB'))).all()
+
+
+def test_error_reindex_duplicate_axis():
+    sf = SparseFrame(np.identity(5),
+                     columns = list('ABCDE'),
+                     index = list('UUXYZ'))
+    with pytest.raises(ValueError):
+        sf.reindex(['U', 'V'])
 
 
 def test_empty_elemwise():
