@@ -289,3 +289,22 @@ def test_groupby_sum():
     res.sort_index(inplace=True)
 
     pdt.assert_frame_equal(res, correct)
+
+
+def test_from_ddf():
+    ddf = dd.from_pandas(
+        pd.DataFrame(np.random.rand(20, 4),
+                     columns=list('ABCD')),
+        npartitions=4
+    )
+    correct = ddf.compute()
+
+    dsf = dsp.from_ddf(ddf)
+
+    res = dsf.compute().todense()
+
+    pdt.assert_frame_equal(correct, res)
+
+    with pytest.raises(ValueError):
+        ddf = ddf.assign(A="some str value")
+        dsf = dsp.from_ddf(ddf)
