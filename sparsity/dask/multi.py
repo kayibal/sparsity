@@ -6,9 +6,8 @@ import pandas as pd
 from dask.dataframe.multi import require, required
 from sparsity.dask.core import SparseFrame
 from functools import partial
-from dask.dataframe.core import is_broadcastable, _Frame
+from dask.dataframe.core import is_broadcastable, _Frame, aca
 from toolz import unique, merge_sorted
-
 
 
 def join_indexed_sparseframes(lhs, rhs, how='left'):

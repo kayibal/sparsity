@@ -272,3 +272,20 @@ def test_distributed_join(how):
     res = joined.compute().todense()
 
     pdt.assert_frame_equal(correct, res)
+
+
+def test_groupby_sum():
+    df = pd.DataFrame(dict(A=np.ones(100), B=np.ones(100)),
+                      index=list('ABCD'*25))
+    correct = df.groupby(level=0).sum()
+    correct.sort_index(inplace=True)
+
+    spf = dsp.from_pandas(df, npartitions=2)
+    assert spf.npartitions == 2
+    grouped = spf.groupby_sum(split_out=4)
+
+    assert grouped.npartitions == 4
+    res = grouped.compute().todense()
+    res.sort_index(inplace=True)
+
+    pdt.assert_frame_equal(res, correct)

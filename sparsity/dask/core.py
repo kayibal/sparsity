@@ -11,13 +11,14 @@ from dask.dataframe import methods
 from dask.dataframe.core import (Scalar, Series, _emulate, _extract_meta,
                                  _Frame, _maybe_from_pandas, apply, funcname,
                                  no_default, partial, partial_by_order,
-                                 split_evenly, check_divisions)
-from dask.dataframe.utils import _nonempty_index
+                                 split_evenly, check_divisions, hash_shard, split_out_on_index)
+from dask.dataframe.groupby import _apply_chunk
+from dask.dataframe.utils import _nonempty_index, make_meta
 from dask.dataframe.utils import make_meta as dd_make_meta
 from dask.delayed import Delayed
 from dask.optimize import cull
 from scipy import sparse
-from toolz import merge, remove
+from toolz import merge, remove, partition_all
 
 import sparsity as sp
 from sparsity.dask.indexing import _LocIndexer
@@ -158,6 +159,15 @@ class SparseFrame(dask.base.DaskMethodsMixin):
 
         return join_indexed_sparseframes(
             self, other, how=how)
+
+    def groupby_sum(self, split_out=1, split_every=8):
+        meta = self._meta
+        token = 'groupby_sum'
+        return apply_concat_apply(self,
+                   chunk=sp.SparseFrame.groupby_sum,
+                   aggregate=sp.SparseFrame.groupby_sum,
+                   meta=meta, token=token, split_every=split_every,
+                   split_out=split_out, split_out_setup=split_out_on_index)
 
     def __repr__(self):
         return \
@@ -516,6 +526,181 @@ def apply_and_enforce(func, arg, kwargs, meta):
         else:
             sf._columns = columns
     return sf
+
+
+def apply_concat_apply(args, chunk=None, aggregate=None, combine=None,
+                       meta=no_default, token=None, chunk_kwargs=None,
+                       aggregate_kwargs=None, combine_kwargs=None,
+                       split_every=None, split_out=None, split_out_setup=None,
+                       split_out_setup_kwargs=None, **kwargs):
+    """Apply a function to blocks, then concat, then apply again
+
+    Parameters
+    ----------
+    args :
+        Positional arguments for the `chunk` function. All `dask.dataframe`
+        objects should be partitioned and indexed equivalently.
+    chunk : function [block-per-arg] -> block
+        Function to operate on each block of data
+    aggregate : function concatenated-block -> block
+        Function to operate on the concatenated result of chunk
+    combine : function concatenated-block -> block, optional
+        Function to operate on intermediate concatenated results of chunk
+        in a tree-reduction. If not provided, defaults to aggregate.
+    token : str, optional
+        The name to use for the output keys.
+    chunk_kwargs : dict, optional
+        Keywords for the chunk function only.
+    aggregate_kwargs : dict, optional
+        Keywords for the aggregate function only.
+    combine_kwargs : dict, optional
+        Keywords for the combine function only.
+    split_every : int, optional
+        Group partitions into groups of this size while performing a
+        tree-reduction. If set to False, no tree-reduction will be used,
+        and all intermediates will be concatenated and passed to ``aggregate``.
+        Default is 8.
+    split_out : int, optional
+        Number of output partitions. Split occurs after first chunk reduction.
+    split_out_setup : callable, optional
+        If provided, this function is called on each chunk before performing
+        the hash-split. It should return a pandas object, where each row
+        (excluding the index) is hashed. If not provided, the chunk is hashed
+        as is.
+    split_out_setup_kwargs : dict, optional
+        Keywords for the `split_out_setup` function only.
+    kwargs :
+        All remaining keywords will be passed to ``chunk``, ``aggregate``, and
+        ``combine``.
+
+    Examples
+    --------
+    >>> def chunk(a_block, b_block):
+    ...     pass
+
+    >>> def agg(df):
+    ...     pass
+
+    >>> apply_concat_apply([a, b], chunk=chunk, aggregate=agg)  # doctest: +SKIP
+    """
+    if chunk_kwargs is None:
+        chunk_kwargs = dict()
+    if aggregate_kwargs is None:
+        aggregate_kwargs = dict()
+    chunk_kwargs.update(kwargs)
+    aggregate_kwargs.update(kwargs)
+
+    if combine is None:
+        if combine_kwargs:
+            raise ValueError("`combine_kwargs` provided with no `combine`")
+        combine = aggregate
+        combine_kwargs = aggregate_kwargs
+    else:
+        if combine_kwargs is None:
+            combine_kwargs = dict()
+        combine_kwargs.update(kwargs)
+
+    if not isinstance(args, (tuple, list)):
+        args = [args]
+
+    npartitions = set(arg.npartitions for arg in args
+                      if isinstance(arg, SparseFrame))
+    if len(npartitions) > 1:
+        raise ValueError("All arguments must have same number of partitions")
+    npartitions = npartitions.pop()
+
+    if split_every is None:
+        split_every = 8
+    elif split_every is False:
+        split_every = npartitions
+    elif split_every < 2 or not isinstance(split_every, int):
+        raise ValueError("split_every must be an integer >= 2")
+
+    token_key = tokenize(token or (chunk, aggregate), meta, args,
+                         chunk_kwargs, aggregate_kwargs, combine_kwargs,
+                         split_every, split_out, split_out_setup,
+                         split_out_setup_kwargs)
+
+    # Chunk
+    a = '{0}-chunk-{1}'.format(token or funcname(chunk), token_key)
+    if len(args) == 1 and isinstance(args[0], SparseFrame) and not chunk_kwargs:
+        dsk = {(a, 0, i, 0): (chunk, key)
+               for i, key in enumerate(args[0].__dask_keys__())}
+    else:
+        dsk = {(a, 0, i, 0): (apply, chunk,
+                              [(x._name, i) if isinstance(x, SparseFrame)
+                               else x for x in args], chunk_kwargs)
+               for i in range(args[0].npartitions)}
+
+    # Split
+    # this splits the blocks (usually) by their index and
+    # basically performs a task sort such that the next tree
+    # aggregation will result in the disered number of partitions
+    # given by the split_out parameter
+    if split_out and split_out > 1:
+        split_prefix = 'split-%s' % token_key
+        shard_prefix = 'shard-%s' % token_key
+        for i in range(args[0].npartitions):
+            # For now we assime that split_out_setup selects the index
+            # as we will only support index groupbys for now. So we can
+            # use the function provided by dask.
+            dsk[(split_prefix, i)] = (hash_shard, (a, 0, i, 0), split_out,
+                                      split_out_setup, split_out_setup_kwargs)
+            # at this point we have dictionaries of dataframes the key
+            # is the to which output partition this dataframe belongs to
+            # the next line unpacks this dictionaries into pure dataframes again
+            # now with the correct dask key for their partition
+            for j in range(split_out):
+                dsk[(shard_prefix, 0, i, j)] = (getitem, (split_prefix, i), j)
+        a = shard_prefix
+    else:
+        split_out = 1
+
+    # Combine
+    b = '{0}-combine-{1}'.format(token or funcname(combine), token_key)
+    k = npartitions
+    depth = 0
+    while k > split_every:
+        for part_i, inds in enumerate(partition_all(split_every, range(k))):
+            for j in range(split_out):
+                # concat basically just concatenates partitions along
+                # the first dimension. Will replace this with the vstack
+                # method from the SparseFrame class. Dask does some
+                # extra checks which we can hopefully neglect.
+                # This combiniation is done split_every partitions
+                conc = (sp.SparseFrame.vstack, [(a, depth, i, j) for i in inds])
+                # Finally we apply the combine function on the concatenated
+                # results. This is usually the same as the aggregate
+                # function.
+                if combine_kwargs:
+                    dsk[(b, depth + 1, part_i, j)] = (apply, combine, [conc], combine_kwargs)
+                else:
+                    dsk[(b, depth + 1, part_i, j)] = (combine, conc)
+        k = part_i + 1
+        a = b
+        depth += 1
+
+    # Aggregate
+    for j in range(split_out):
+        b = '{0}-agg-{1}'.format(token or funcname(aggregate), token_key)
+        conc = (sp.SparseFrame.vstack, [(a, depth, i, j) for i in range(k)])
+        if aggregate_kwargs:
+            dsk[(b, j)] = (apply, aggregate, [conc], aggregate_kwargs)
+        else:
+            dsk[(b, j)] = (aggregate, conc)
+
+    if meta is no_default:
+        meta_chunk = _emulate(chunk, *args, **chunk_kwargs)
+        meta = _emulate(aggregate, sp.SparseFrame.vstack([meta_chunk]),
+                        **aggregate_kwargs)
+
+    for arg in args:
+        if isinstance(arg, SparseFrame):
+            dsk.update(arg.dask)
+
+    divisions = [None] * (split_out + 1)
+
+    return SparseFrame(dsk, b, meta, divisions)
 
 
 normalize_token.register((SparseFrame,), lambda a: a._name)
