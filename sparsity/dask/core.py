@@ -635,21 +635,23 @@ def apply_concat_apply(args, chunk=None, aggregate=None, combine=None,
     # Split
     # this splits the blocks (usually) by their index and
     # basically performs a task sort such that the next tree
-    # aggregation will result in the disered number of partitions
+    # aggregation will result in the desired number of partitions
     # given by the split_out parameter
     if split_out and split_out > 1:
         split_prefix = 'split-%s' % token_key
         shard_prefix = 'shard-%s' % token_key
         for i in range(args[0].npartitions):
-            # For now we assime that split_out_setup selects the index
+            # For now we assume that split_out_setup selects the index
             # as we will only support index groupbys for now. So we can
             # use the function provided by dask.
             dsk[(split_prefix, i)] = (hash_shard, (a, 0, i, 0), split_out,
                                       split_out_setup, split_out_setup_kwargs)
-            # at this point we have dictionaries of dataframes the key
-            # is the to which output partition this dataframe belongs to
-            # the next line unpacks this dictionaries into pure dataframes again
-            # now with the correct dask key for their partition
+            # At this point we have dictionaries of dataframes. The dictionary keys
+            # correspond to the hashed index value. Such that rows with the same index
+            # have the same dictionary key.
+            # The next line unpacks this dictionaries into pure dataframes again
+            # now with the correct dask key for their partition. So at this point
+            # we might have shards of a single row in the next step they are combined again.
             for j in range(split_out):
                 dsk[(shard_prefix, 0, i, j)] = (getitem, (split_prefix, i), j)
         a = shard_prefix
@@ -663,11 +665,6 @@ def apply_concat_apply(args, chunk=None, aggregate=None, combine=None,
     while k > split_every:
         for part_i, inds in enumerate(partition_all(split_every, range(k))):
             for j in range(split_out):
-                # concat basically just concatenates partitions along
-                # the first dimension. Will replace this with the vstack
-                # method from the SparseFrame class. Dask does some
-                # extra checks which we can hopefully neglect.
-                # This combiniation is done split_every partitions
                 conc = (sp.SparseFrame.vstack, [(a, depth, i, j) for i in inds])
                 # Finally we apply the combine function on the concatenated
                 # results. This is usually the same as the aggregate
