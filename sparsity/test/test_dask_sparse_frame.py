@@ -273,10 +273,15 @@ def test_distributed_join(how):
 
     pdt.assert_frame_equal(correct, res)
 
+@pytest.mark.parametrize('idx', [
+    list('ABCD'*25),
+    np.array(list('0123'*25)).astype(int),
+    np.array(list('0123'*25)).astype(float),
+])
+def test_groupby_sum(idx):
 
-def test_groupby_sum():
     df = pd.DataFrame(dict(A=np.ones(100), B=np.ones(100)),
-                      index=list('ABCD'*25))
+                      index=idx)
     correct = df.groupby(level=0).sum()
     correct.sort_index(inplace=True)
 
