@@ -129,7 +129,9 @@ class SparseFrame(object):
                 dense = pd.DataFrame(dense.reshape(1, -1), index=self.index,
                                      columns=self.columns)
             else:
-                idx = np.broadcast_to(self.index, dense.shape[0])
+                # need to copy as broadcast_to return read_only array
+                idx = np.broadcast_to(self.index, dense.shape[0])\
+                     .copy()
                 dense = pd.DataFrame(dense, index=idx,
                                      columns=self.columns)
         return dense

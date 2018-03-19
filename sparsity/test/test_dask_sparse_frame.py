@@ -273,6 +273,28 @@ def test_distributed_join(how):
 
     pdt.assert_frame_equal(correct, res)
 
+@pytest.mark.parametrize('idx', [
+    list('ABCD'*25),
+    np.array(list('0123'*25)).astype(int),
+    np.array(list('0123'*25)).astype(float),
+])
+def test_groupby_sum(idx):
+
+    df = pd.DataFrame(dict(A=np.ones(100), B=np.ones(100)),
+                      index=idx)
+    correct = df.groupby(level=0).sum()
+    correct.sort_index(inplace=True)
+
+    spf = dsp.from_pandas(df, npartitions=2)
+    assert spf.npartitions == 2
+    grouped = spf.groupby_sum(split_out=4)
+
+    assert grouped.npartitions == 4
+    res = grouped.compute().todense()
+    res.sort_index(inplace=True)
+
+    pdt.assert_frame_equal(res, correct)
+
 
 def test_from_ddf():
     ddf = dd.from_pandas(
