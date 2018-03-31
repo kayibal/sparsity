@@ -313,3 +313,24 @@ def test_from_ddf():
     with pytest.raises(ValueError):
         ddf = ddf.assign(A="some str value")
         dsf = dsp.from_ddf(ddf)
+
+
+def test_sdf_sort_index():
+    data = pd.DataFrame(np.random.rand(20, 4),
+                        columns=list('ABCD'),
+                        index=np.random.choice([1,2,3,4,5,6], 20))
+    ddf = dd.from_pandas(data,
+        npartitions=4,
+        sort=False,
+    )
+    ddf2 = ddf.assign(idx=ddf.index).set_index('idx')
+    # ddf2.compute()
+
+    dsf = dsp.from_ddf(ddf)
+    dsf = dsf.sort_index()
+
+    assert dsf.known_divisions
+
+    res = dsf.compute()
+    assert res.index.is_monotonic
+    assert res.columns.tolist() == list('ABCD')

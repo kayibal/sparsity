@@ -11,7 +11,8 @@ from dask.dataframe import methods
 from dask.dataframe.core import (Scalar, Series, _emulate, _extract_meta,
                                  _Frame, _maybe_from_pandas, apply, funcname,
                                  no_default, partial, partial_by_order,
-                                 split_evenly, check_divisions, hash_shard, split_out_on_index)
+                                 split_evenly, check_divisions, hash_shard,
+                                 split_out_on_index, Index)
 from dask.dataframe.groupby import _apply_chunk
 from dask.dataframe.utils import _nonempty_index, make_meta
 from dask.dataframe.utils import make_meta as dd_make_meta
@@ -47,18 +48,12 @@ def finalize(results):
     results = [r for r in results if not r.empty]
     return sp.SparseFrame.vstack(results)
 
-
 class SparseFrame(dask.base.DaskMethodsMixin):
 
     def __init__(self, dsk, name, meta, divisions=None):
         self.dask = dsk
         self._name = name
         self._meta = _make_meta(meta)
-
-        if divisions:
-            self.known_divisions = True
-        else:
-            self.known_divisions = False
 
         self.divisions = tuple(divisions)
         self.ndim = 2
@@ -97,8 +92,19 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         return self._meta.columns
 
     @property
+    def known_divisions(self):
+        """Whether divisions are already known"""
+        return len(self.divisions) > 0 and self.divisions[0] is not None
+
+    @property
     def index(self):
-        return self._meta.index
+        """Return dask Index instance"""
+        name = self._name + '-index'
+        dsk = {(name, i): (getattr, key, 'index')
+               for i, key in enumerate(self.__dask_keys__())}
+
+        return Index(merge(dsk, self.dask), name,
+                     self._meta.index, self.divisions)
 
     def map_partitions(self, func, meta, *args, **kwargs):
         return map_partitions(func, self, meta, *args, **kwargs)
@@ -150,6 +156,19 @@ class SparseFrame(dask.base.DaskMethodsMixin):
             return repartition_npartitions(self, npartitions)
         raise ValueError('Either divisions or npartitions must be supplied')
 
+    def get_partition(self, n):
+        """Get a sparse dask DataFrame/Series representing
+           the `nth` partition."""
+        if 0 <= n < self.npartitions:
+            name = 'get-partition-%s-%s' % (str(n), self._name)
+            dsk = {(name, 0): (self._name, n)}
+            divisions = self.divisions[n:n + 2]
+            return SparseFrame(merge(self.dask, dsk), name,
+                                 self._meta, divisions)
+        else:
+            msg = "n must be 0 <= n < {0}".format(self.npartitions)
+            raise ValueError(msg)
+
     def join(self, other, on=None, how='left', lsuffix='',
              rsuffix='', npartitions=None):
         from .multi import join_indexed_sparseframes
@@ -159,6 +178,10 @@ class SparseFrame(dask.base.DaskMethodsMixin):
 
         return join_indexed_sparseframes(
             self, other, how=how)
+
+    def sort_index(self,  npartitions=None, divisions=None):
+        from .shuffle import sort_index
+        return sort_index(self, npartitions=npartitions, divisions=None)
 
     def groupby_sum(self, split_out=1, split_every=8):
         meta = self._meta
