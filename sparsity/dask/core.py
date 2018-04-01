@@ -173,11 +173,24 @@ class SparseFrame(dask.base.DaskMethodsMixin):
              rsuffix='', npartitions=None):
         from .multi import join_indexed_sparseframes
 
+        if isinstance(other, sp.SparseFrame):
+            meta = sp.SparseFrame.join(self._meta_nonempty,
+                                       other,
+                                       how=how)
+            join_func = partial(sp.SparseFrame.join, other=other,
+                                how=how)
+            return self.map_partitions(join_func, meta=meta, name='simplejoin')
         if not isinstance(other, (SparseFrame)):
             raise ValueError('other must be SparseFrame')
 
         return join_indexed_sparseframes(
             self, other, how=how)
+
+    def rename(self, columns):
+        #TODO: add test
+        _meta = self._meta.rename(columns=columns)
+        return self.map_partitions(sp.SparseFrame.rename, meta=_meta,
+                                   columns=columns)
 
     def sort_index(self,  npartitions=None, divisions=None):
         from .shuffle import sort_index
@@ -185,6 +198,14 @@ class SparseFrame(dask.base.DaskMethodsMixin):
 
     def groupby_sum(self, split_out=1, split_every=8):
         meta = self._meta
+        if self.known_divisions:
+            #TODO: test this case
+            res = self.map_partitions(sp.SparseFrame.groupby_sum,
+                                      meta=meta)
+            res.divisions = self.divisions
+            if split_out and split_out != self.npartitions:
+                res = res.repartition(npartitions=split_out)
+            return res
         token = 'groupby_sum'
         return apply_concat_apply(self,
                    chunk=sp.SparseFrame.groupby_sum,
@@ -522,9 +543,9 @@ def elemwise(op, *args, **kwargs):
     return SparseFrame(dsk, _name, meta, divisions)
 
 
-def map_partitions(func, ddf, meta, **kwargs):
+def map_partitions(func, ddf, meta, name=None, **kwargs):
     dsk = {}
-    name = func.__name__
+    name = name or func.__name__
     token = tokenize(func, meta, **kwargs)
     name = '{0}-{1}'.format(name, token)
 
