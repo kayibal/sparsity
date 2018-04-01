@@ -179,6 +179,18 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         return join_indexed_sparseframes(
             self, other, how=how)
 
+    def set_index(self, column=None, idx=None, level=None):
+        #TODO: add test
+        if idx is not None:
+            raise NotImplementedError('Only column or level supported')
+        new_name = self._meta.index.names[level] if level else column
+        meta = self._meta.set_index(pd.Index([], name=new_name))
+        res = self.map_partitions(sp.SparseFrame.set_index, meta=meta,
+                                  column=column, idx=idx, level=level)
+        res.divisions = [None] * ( self.npartitions + 1)
+        return res
+
+
     def sort_index(self,  npartitions=None, divisions=None):
         from .shuffle import sort_index
         return sort_index(self, npartitions=npartitions, divisions=None)
