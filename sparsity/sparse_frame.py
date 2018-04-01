@@ -370,6 +370,9 @@ class SparseFrame(object):
                                   columns=np.concatenate([self._columns, other._columns]))
         return res
 
+    def __len__(self):
+        return self.shape[0]
+
     def rename(self, columns, inplace=False):
         """
         Rename columns by applying a callable to every column name.
