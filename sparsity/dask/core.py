@@ -13,7 +13,8 @@ from dask.dataframe.core import (Scalar, Series, _emulate, _extract_meta,
                                  no_default, partial, partial_by_order,
                                  split_evenly, check_divisions, hash_shard,
                                  split_out_on_index, Index)
-from dask.dataframe.utils import _nonempty_index
+from dask.dataframe.groupby import _apply_chunk
+from dask.dataframe.utils import _nonempty_index, make_meta
 from dask.dataframe.utils import make_meta as dd_make_meta
 from dask.delayed import Delayed
 from dask.optimize import cull
@@ -173,14 +174,33 @@ class SparseFrame(dask.base.DaskMethodsMixin):
              rsuffix='', npartitions=None):
         from .multi import join_indexed_sparseframes
 
+        if isinstance(other, sp.SparseFrame) and how in ['left', 'inner']:
+            meta = sp.SparseFrame.join(self._meta_nonempty,
+                                       other,
+                                       how=how)
+            join_func = partial(sp.SparseFrame.join, other=other,
+                                how=how)
+            return self.map_partitions(join_func, meta=meta, name='simplejoin')
         if not isinstance(other, (SparseFrame)):
             raise ValueError('other must be SparseFrame')
 
         return join_indexed_sparseframes(
             self, other, how=how)
 
+    def rename(self, columns):
+        _meta = self._meta.rename(columns=columns)
+        return self.map_partitions(sp.SparseFrame.rename, meta=_meta,
+                                   columns=columns)
+
     def groupby_sum(self, split_out=1, split_every=8):
         meta = self._meta
+        if self.known_divisions:
+            res = self.map_partitions(sp.SparseFrame.groupby_sum,
+                                      meta=meta)
+            res.divisions = self.divisions
+            if split_out and split_out != self.npartitions:
+                res = res.repartition(npartitions=split_out)
+            return res
         token = 'groupby_sum'
         return apply_concat_apply(self,
                    chunk=sp.SparseFrame.groupby_sum,
@@ -569,9 +589,9 @@ def elemwise(op, *args, **kwargs):
     return SparseFrame(dsk, _name, meta, divisions)
 
 
-def map_partitions(func, ddf, meta, **kwargs):
+def map_partitions(func, ddf, meta, name=None, **kwargs):
     dsk = {}
-    name = func.__name__
+    name = name or func.__name__
     token = tokenize(func, meta, **kwargs)
     name = '{0}-{1}'.format(name, token)
 
