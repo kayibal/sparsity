@@ -11,9 +11,9 @@ from dask.dataframe import methods
 from dask.dataframe.core import (Scalar, Series, _emulate, _extract_meta,
                                  _Frame, _maybe_from_pandas, apply, funcname,
                                  no_default, partial, partial_by_order,
-                                 split_evenly, check_divisions, hash_shard, split_out_on_index)
-from dask.dataframe.groupby import _apply_chunk
-from dask.dataframe.utils import _nonempty_index, make_meta
+                                 split_evenly, check_divisions, hash_shard,
+                                 split_out_on_index, Index)
+from dask.dataframe.utils import _nonempty_index
 from dask.dataframe.utils import make_meta as dd_make_meta
 from dask.delayed import Delayed
 from dask.optimize import cull
@@ -22,6 +22,7 @@ from toolz import merge, remove, partition_all
 
 import sparsity as sp
 from sparsity.dask.indexing import _LocIndexer
+
 
 def _make_meta(inp):
     if isinstance(inp, sp.SparseFrame) and inp.empty:
@@ -47,18 +48,12 @@ def finalize(results):
     results = [r for r in results if not r.empty]
     return sp.SparseFrame.vstack(results)
 
-
 class SparseFrame(dask.base.DaskMethodsMixin):
 
     def __init__(self, dsk, name, meta, divisions=None):
         self.dask = dsk
         self._name = name
         self._meta = _make_meta(meta)
-
-        if divisions:
-            self.known_divisions = True
-        else:
-            self.known_divisions = False
 
         self.divisions = tuple(divisions)
         self.ndim = 2
@@ -97,8 +92,19 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         return self._meta.columns
 
     @property
+    def known_divisions(self):
+        """Whether divisions are already known"""
+        return len(self.divisions) > 0 and self.divisions[0] is not None
+
+    @property
     def index(self):
-        return self._meta.index
+        """Return dask Index instance"""
+        name = self._name + '-index'
+        dsk = {(name, i): (getattr, key, 'index')
+               for i, key in enumerate(self.__dask_keys__())}
+
+        return Index(merge(dsk, self.dask), name,
+                     self._meta.index, self.divisions)
 
     def map_partitions(self, func, meta, *args, **kwargs):
         return map_partitions(func, self, meta, *args, **kwargs)
@@ -150,6 +156,19 @@ class SparseFrame(dask.base.DaskMethodsMixin):
             return repartition_npartitions(self, npartitions)
         raise ValueError('Either divisions or npartitions must be supplied')
 
+    def get_partition(self, n):
+        """Get a sparse dask DataFrame/Series representing
+           the `nth` partition."""
+        if 0 <= n < self.npartitions:
+            name = 'get-partition-%s-%s' % (str(n), self._name)
+            dsk = {(name, 0): (self._name, n)}
+            divisions = self.divisions[n:n + 2]
+            return SparseFrame(merge(self.dask, dsk), name,
+                                 self._meta, divisions)
+        else:
+            msg = "n must be 0 <= n < {0}".format(self.npartitions)
+            raise ValueError(msg)
+
     def join(self, other, on=None, how='left', lsuffix='',
              rsuffix='', npartitions=None):
         from .multi import join_indexed_sparseframes
@@ -159,6 +178,57 @@ class SparseFrame(dask.base.DaskMethodsMixin):
 
         return join_indexed_sparseframes(
             self, other, how=how)
+
+    def groupby_sum(self, split_out=1, split_every=8):
+        meta = self._meta
+        token = 'groupby_sum'
+        return apply_concat_apply(self,
+                   chunk=sp.SparseFrame.groupby_sum,
+                   aggregate=sp.SparseFrame.groupby_sum,
+                   meta=meta, token=token, split_every=split_every,
+                   split_out=split_out, split_out_setup=split_out_on_index)
+
+    def sort_index(self,  npartitions=None, divisions=None, **kwargs):
+        """Sort the DataFrame index (row labels)
+        This realigns the dataset to be sorted by the index.  This can have a
+        significant impact on performance, because joins, groupbys, lookups, etc.
+        are all much faster on that column.  However, this performance increase
+        comes with a cost, sorting a parallel dataset requires expensive shuffles.
+        Often we ``sort_index`` once directly after data ingest and filtering and
+        then perform many cheap computations off of the sorted dataset.
+        This function operates exactly like ``pandas.sort_index`` except with
+        different performance costs (it is much more expensive).  Under normal
+        operation this function does an initial pass over the index column to
+        compute approximate qunatiles to serve as future divisions.  It then passes
+        over the data a second time, splitting up each input partition into several
+        pieces and sharing those pieces to all of the output partitions now in
+        sorted order.
+        In some cases we can alleviate those costs, for example if your dataset is
+        sorted already then we can avoid making many small pieces or if you know
+        good values to split the new index column then we can avoid the initial
+        pass over the data.  For example if your new index is a datetime index and
+        your data is already sorted by day then this entire operation can be done
+        for free.  You can control these options with the following parameters.
+
+        Parameters
+        ----------
+        npartitions: int, None, or 'auto'
+            The ideal number of output partitions.   If None use the same as
+            the input.  If 'auto' then decide by memory use.
+        divisions: list, optional
+            Known values on which to separate index values of the partitions.
+            See http://dask.pydata.org/en/latest/dataframe-design.html#partitions
+            Defaults to computing this with a single pass over the data. Note
+            that if ``sorted=True``, specified divisions are assumed to match
+            the existing partitions in the data. If this is untrue, you should
+            leave divisions empty and call ``repartition`` after ``set_index``.
+        partition_size: int, optional
+            if npartitions is set to auto repartition the dataframe into
+            partitions of this size.
+        """
+        from .shuffle import sort_index
+        return sort_index(self, npartitions=npartitions,
+                          divisions=None, **kwargs)
 
     def groupby_sum(self, split_out=1, split_every=8):
         meta = self._meta
