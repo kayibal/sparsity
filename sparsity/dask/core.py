@@ -188,10 +188,10 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         return join_indexed_sparseframes(
             self, other, how=how)
 
-    def rename(self, columns):
-        _meta = self._meta.rename(columns=columns)
-        return self.map_partitions(sp.SparseFrame.rename, meta=_meta,
-                                   columns=columns)
+    def to_npz(self, filename, blocksize=None,
+               storage_options=None, compute=True):
+        from sparsity.dask.io import to_npz
+        to_npz(self, filename, blocksize, storage_options, compute)
 
     def groupby_sum(self, split_out=1, split_every=8):
         meta = self._meta

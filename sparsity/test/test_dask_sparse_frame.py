@@ -207,9 +207,21 @@ def test_read_npz():
         sf.iloc[50:75].to_npz(os.path.join(tmp, '3'))
         sf.iloc[75:].to_npz(os.path.join(tmp, '4'))
 
-        dsf = dsp.read_npz(os.path.join(tmp, '*.npz'))
+        dsf = dsp.read_npz(os.path.join(tmp, '*.npz'), read_divisions=True)
         sf = dsf.compute()
+        assert dsf.known_divisions
     assert np.all(sf.data.toarray() == np.identity(100))
+
+
+def test_to_npz(dsf):
+    dense = dsf.compute().todense()
+    with tmpdir() as tmp:
+        path = os.path.join(tmp, '*.npz')
+        dsf.to_npz(path)
+        loaded = dsp.read_npz(path)
+        assert loaded.known_divisions
+        res = loaded.compute().todense()
+    pdt.assert_frame_equal(dense, res)
 
 
 def test_assign_column():
