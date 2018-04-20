@@ -18,6 +18,7 @@ from dask.dataframe.utils import _nonempty_index, make_meta
 from dask.dataframe.utils import make_meta as dd_make_meta
 from dask.delayed import Delayed
 from dask.optimize import cull
+from dask.utils import derived_from
 from scipy import sparse
 from toolz import merge, remove, partition_all
 
@@ -250,14 +251,18 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         return sort_index(self, npartitions=npartitions,
                           divisions=None, **kwargs)
 
-    def groupby_sum(self, split_out=1, split_every=8):
-        meta = self._meta
-        token = 'groupby_sum'
-        return apply_concat_apply(self,
-                   chunk=sp.SparseFrame.groupby_sum,
-                   aggregate=sp.SparseFrame.groupby_sum,
-                   meta=meta, token=token, split_every=split_every,
-                   split_out=split_out, split_out_setup=split_out_on_index)
+    @derived_from(sp.SparseFrame)
+    def set_index(self, column=None, idx=None, level=None):
+        if column is None and idx is None and level is None:
+            raise ValueError("Either column, idx or level should not be None")
+        if idx is not None:
+            raise NotImplementedError('Only column or level supported')
+        new_name = self._meta.index.names[level] if level else column
+        meta = self._meta.set_index(pd.Index([], name=new_name))
+        res = self.map_partitions(sp.SparseFrame.set_index, meta=meta,
+                                  column=column, idx=idx, level=level)
+        res.divisions = [None] * ( self.npartitions + 1)
+        return res
 
     def __repr__(self):
         return \

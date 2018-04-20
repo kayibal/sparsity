@@ -422,3 +422,16 @@ def test_get_partition(dsf):
              for i in range(dsf.npartitions)]
     res = pd.concat(parts, axis=0)
     pdt.assert_frame_equal(res, correct)
+
+
+def test_set_index(clickstream):
+    ddf = dd.from_pandas(clickstream, npartitions=10)
+    dsf = one_hot_encode(ddf,
+                         categories={'page_id': list('ABCDE'),
+                                     'other_categorical': list('FGHIJ')},
+                         order=['other_categorical', 'page_id'],
+                         index_col=['index', 'id'])
+    dense = dsf.compute().set_index(level=1).todense()
+    res = dsf.set_index(level=1).compute().todense()
+
+    pdt.assert_frame_equal(dense, res)
