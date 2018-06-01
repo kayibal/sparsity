@@ -1,3 +1,4 @@
+import versioneer
 from distutils.core import setup, Extension
 from setuptools import find_packages
 
@@ -15,17 +16,26 @@ try:
     ext_modules = cythonize([ext])
 except (ImportError, OSError):
     ext_modules = None
+
+packages = find_packages()
+packages.remove('sparsity.test')
+
 setup(
     name='sparsity',
-    version='0.5.1',
+    version=versioneer.get_version(),
     ext_modules = ext_modules,
     author='Alan Hoeng',
     author_email='alan.f.hoeng@gmail.com',
-    packages=find_packages(),
+    packages=packages,
+    cmdclass=versioneer.get_cmdclass(),
     install_requires=[
-                        'pandas>=0.19.2',
+                        'pandas>=0.19.0,<0.23.0',
                         'scipy>=0.18.1',
-                        'numpy>=1.12.0'
+                        'numpy>=1.12.0',
+                        's3fs>=0.1.0'
                     ],
+    test_requires=[
+        'moto'
+    ],
     zip_safe=False
 )

@@ -11,10 +11,11 @@ dependencies:
         - pip install numpy cython 2>&1
         - pip install pytest pytest-cov
         - pip install -v scipy pandas
-        - pip install dask[dataframe]
+        - pip install dask[dataframe] moto
 test:
     override:
-        - pip install -e .
-        - py.test --cov sparsity --cov-report xml sparsity/test
+        - pip install .
+        - python -c 'import sparsity'
+        - py.test --cov sparsity --cov-report xml sparsity
     post:
         - bash <(curl -s https://codecov.io/bash)
