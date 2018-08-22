@@ -1,4 +1,5 @@
 # coding=utf-8
+import functools
 import traceback
 import uuid
 import warnings
@@ -22,7 +23,8 @@ try:
     trail_db = True
 except:
     trail_db = False
-from sparsity.indexing import _CsrILocationIndexer, _CsrLocIndexer
+from sparsity.indexing import _CsrILocationIndexer, _CsrLocIndexer, \
+    get_indexers_list
 
 
 def _is_empty(data):
@@ -44,9 +46,6 @@ class SparseFrame(object):
     """
     Simple sparse table based on scipy.sparse.csr_matrix
     """
-
-    __slots__ = ["_index", "_columns", "_data", "shape",
-                 'ndim', 'iloc', 'loc', 'empty']
 
     def __init__(self, data, index=None, columns=None, **kwargs):
         if len(data.shape) > 2:
@@ -86,8 +85,17 @@ class SparseFrame(object):
 
         # register indexers
         self.ndim = 2
-        self.iloc = _CsrILocationIndexer(self, 'iloc')
-        self.loc = _CsrLocIndexer(self, 'loc')
+
+    @classmethod
+    def _create_indexer(cls, name, indexer):
+        """Create an indexer like _name in the class."""
+        if getattr(cls, name, None) is None:
+            _v = tuple(map(int, pd.__version__.split('.')))
+            if _v >= (0, 23, 0):
+                _indexer = functools.partial(indexer, name)
+            else:
+                _indexer = functools.partial(indexer, name=name)
+            setattr(cls, name, property(_indexer, doc=indexer.__doc__))
 
     def _init_values(self, data, kwargs):
         if isinstance(data, pd.DataFrame):
@@ -219,10 +227,21 @@ class SparseFrame(object):
         """
         return self.take(*args, **kwargs)
 
-    def _xs(self, key, *args, **kwargs):
+    def _xs(self, key, *args, axis=0, **kwargs):
         """Used for label based indexing."""
-        loc = self.index.get_loc(key)
-        return SparseFrame(self.data[loc], index=[key], columns=self.columns)
+        if axis == 0:
+            loc = self.index.get_loc(key)
+            new_data = self.data[loc]
+            return SparseFrame(new_data,
+                               index=[key] * new_data.shape[0],
+                               columns=self.columns)
+        else:
+            loc = self.columns.get_loc(key)
+            new_data = self.data[:, loc]
+            return SparseFrame(new_data,
+                               columns=[key] * new_data.shape[1],
+                               index=self.index)
+
 
     @property
     def index(self):
@@ -558,7 +577,7 @@ class SparseFrame(object):
             labels = [labels]
         if axis == 1:
             mask = np.logical_not(self.columns.isin(labels))
-            sf = self[self.columns[mask].tolist()]
+            sf = self.loc[:, self.columns[mask].tolist()]
         else:
             raise NotImplementedError
         return sf
@@ -570,9 +589,17 @@ class SparseFrame(object):
                            columns=self.columns)
 
     def __getitem__(self, item):
+        if item is None:
+            raise ValueError('cannot label index with a null key')
         if not isinstance(item, (tuple, list)):
             item = [item]
-        return self.reindex_axis(item, axis=1)
+        if len(item) > 0:
+            return self.reindex_axis(item, axis=1)
+        else:
+            data = np.empty(shape=(self.shape[0], 0))
+            return SparseFrame(data, index=self.index,
+                               columns=self.columns[[]])
+
 
     def dropna(self):
         """Drop nans from index."""
@@ -609,7 +636,7 @@ class SparseFrame(object):
                 isinstance(self._index, pd.MultiIndex):
             new_idx = self.index.get_level_values(level)
         elif column is not None:
-            new_idx = np.asarray(self[column].data.todense()).reshape(-1)
+            new_idx = np.asarray(self.loc[:, column].data.todense()).reshape(-1)
 
         if inplace:
             self._index = _ensure_index(new_idx)
@@ -646,6 +673,30 @@ class SparseFrame(object):
         except IndexError:
             raise ValueError('No axis named {} for {}'
                              .format(axis, self.__class__))
+
+    def _reindex_with_indexers(self, reindexers, **kwargs):
+        """allow_dups indicates an internal call here """
+
+        # reindex doing multiple operations on different axes if indicated
+        new_data = self.copy()
+        for axis in sorted(reindexers.keys()):
+            index, indexer = reindexers[axis]
+
+            if index is None:
+                continue
+
+            if axis == 0:
+                new_mat = new_data.data[indexer, :]
+                new_data = SparseFrame(new_mat, index=index,
+                                       columns=self.columns)
+            elif axis == 1:
+                new_mat = new_data.data[:, indexer]
+                new_data = SparseFrame(new_mat, columns=index,
+                                       index=self.index)
+            else:
+                raise ValueError('Only supported axes are 0 and 1.')
+
+        return new_data
 
     def reindex(self, labels=None, index=None, columns=None, axis=None,
                 *args, **kwargs):
@@ -923,3 +974,6 @@ def _check_categories_order(categories1, categories2, categorical_column_name,
                 mismatch_type=mismatch_type
             )
         )
+
+for _name, _indexer in get_indexers_list():
+    SparseFrame._create_indexer(_name, _indexer)

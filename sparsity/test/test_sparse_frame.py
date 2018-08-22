@@ -2,7 +2,6 @@
 import datetime as dt
 import os
 
-#import dask.dataframe as dd
 from contextlib import contextmanager
 
 import numpy as np
@@ -202,8 +201,8 @@ def test_loc_multi_index(sf_midx, sf_midx_int):
     assert np.all(sf_midx.loc[dt_slice].data.todense() ==
                   np.identity(5)[:3])
 
-    assert np.all(sf_midx_int.loc[1].todense() == sf_midx.data[:4,:])
-    assert np.all(sf_midx_int.loc[0].todense() == sf_midx.data[4, :])
+    assert np.all(sf_midx_int.loc[1].todense().values == sf_midx.data[:4,:])
+    assert np.all(sf_midx_int.loc[0].todense().values == sf_midx.data[4, :])
 
 
 def test_set_index(sf_midx):
@@ -619,13 +618,20 @@ def test_npz_io_s3(complex_example):
 
 
 def test_getitem():
-    sf = SparseFrame(np.identity(10), columns=list('abcdefghij'))
+    id_ = np.identity(10)
+    sf = SparseFrame(id_, columns=list('abcdefghij'))
     assert sf['a'].data.todense()[0] == 1
     assert sf['j'].data.todense()[9] == 1
+    assert np.all(sf[['a', 'b']].data.todense() == np.asmatrix(id_[:, [0, 1]]))
     tmp = sf[['j', 'a']].data.todense()
     assert tmp[9, 0] == 1
     assert tmp[0, 1] == 1
     assert (sf[list('abcdefghij')].data.todense() == np.identity(10)).all()
+    assert sf[[]].shape == (10, 0)
+    assert len(sf[[]].columns) == 0
+    assert isinstance(sf.columns, type(sf[[]].columns))
+    with pytest.raises(ValueError):
+        sf[None]
 
 
 def test_vstack():
@@ -896,3 +902,16 @@ def test_empty_elemwise():
 
     with pytest.raises(ValueError):
         res = sf.add(sf_empty, fill_value=None)
+
+
+def test_loc_duplicate_index():
+    sf = SparseFrame(np.identity(5),
+                     columns=list('UUXYZ'),
+                     index=list('AAABB'))
+    assert len(sf.loc['A'].index) == 3
+    assert len(sf.loc['B'].index) == 2
+    assert np.all(sf.loc['A'].todense().values == np.identity(5)[:3])
+    assert np.all(sf.loc['B'].todense().values == np.identity(5)[3:])
+
+    assert len(sf.loc[:, 'U'].columns) == 2
+    assert np.all(sf.loc[:, 'U'].todense().values == np.identity(5)[:, :2])
