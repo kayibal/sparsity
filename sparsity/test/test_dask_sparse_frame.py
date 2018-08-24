@@ -1,33 +1,28 @@
-import shutil
-import tempfile
+import datetime as dt
 import os
-from contextlib import contextmanager
+from uuid import uuid4
 
 import dask
+import dask.dataframe as dd
+import numpy as np
+import pandas as pd
 import pytest
-
 import sparsity as sp
 import sparsity.dask as dsp
-import pandas as pd
-import numpy as np
-import dask.dataframe as dd
-
+from dask.local import get_sync
 from sparsity.dask.reshape import one_hot_encode
+import pandas.util.testing as pdt
 
-dask.context.set_options(get=dask.async.get_sync)
+from .conftest import tmpdir
 
-
-@contextmanager
-def tmpdir(dir=None):
-    dirname = tempfile.mkdtemp(dir=dir)
-
-    try:
-        yield dirname
-    finally:
-        if os.path.exists(dirname):
-            shutil.rmtree(dirname, ignore_errors=True)
+dask.context.set_options(get=dask.local.get_sync)
 
 
+@pytest.fixture
+def dsf():
+    return dsp.from_pandas(pd.DataFrame(np.random.rand(10,2),
+                                        columns=['A', 'B']),
+                           npartitions=3)
 
 def test_from_pandas():
     dsf = dsp.from_pandas(pd.DataFrame(np.random.rand(10,2)),
@@ -59,11 +54,33 @@ def test_loc(iindexer, correct_shape):
     df = pd.DataFrame(np.random.rand(10, 2),
                       index=list('ABCDEFGHIJ'))
     dsf = dsp.from_pandas(df, npartitions=2)
-    res = dsf.loc[iindexer].compute()
+    fut = dsf.loc[iindexer]
+    assert fut._meta.empty
+    res = fut.compute()
 
     assert isinstance(res, sp.SparseFrame)
     assert res.shape == correct_shape
 
+def test_dask_loc(clickstream):
+    sf = one_hot_encode(dd.from_pandas(clickstream, npartitions=10),
+                        categories={'page_id': list('ABCDE'),
+                                    'other_categorical': list('FGHIJ')},
+                        index_col=['index', 'id'])
+    res = sf.loc['2016-01-15':'2016-02-15']
+    res = res.compute()
+    assert res.index.levels[0].max().date() == dt.date(2016, 2, 15)
+    assert res.index.levels[0].min().date() == dt.date(2016, 1, 15)
+
+
+def test_dask_multi_index_loc(clickstream):
+    sf = one_hot_encode(dd.from_pandas(clickstream, npartitions=10),
+                        categories={'page_id': list('ABCDE'),
+                                    'other_categorical': list('FGHIJ')},
+                        index_col=['index', 'id'])
+    res = sf.loc['2016-01-15':'2016-02-15']
+    res = res.compute()
+    assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
+    assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
 
 def test_repr():
     dsf = dsp.from_pandas(pd.DataFrame(np.random.rand(10, 2)),
@@ -75,14 +92,104 @@ def test_repr():
     assert isinstance(dsf.__repr__(), str)
 
 
-def test_one_hot(clickstream):
+def test_one_hot_legacy(clickstream):
     ddf = dd.from_pandas(clickstream, npartitions=10)
-    dsf = one_hot_encode(ddf, column='page_id',
-                         categories=list('ABCDE'),
-                         index_col=['index', 'id'])
+    dsf = one_hot_encode(ddf, 'page_id', list('ABCDE'), ['index', 'id'])
+    assert dsf._meta.empty
     sf = dsf.compute()
     assert sf.shape == (100, 5)
     assert isinstance(sf.index, pd.MultiIndex)
+
+
+def test_one_hot_no_order(clickstream):
+    ddf = dd.from_pandas(clickstream, npartitions=10)
+    dsf = one_hot_encode(ddf,
+                         categories={'page_id': list('ABCDE'),
+                                     'other_categorical': list('FGHIJ')},
+                         index_col=['index', 'id'])
+    assert dsf._meta.empty
+    assert sorted(dsf.columns) == list('ABCDEFGHIJ')
+    sf = dsf.compute()
+    assert sf.shape == (100, 10)
+    assert isinstance(sf.index, pd.MultiIndex)
+    assert sorted(sf.columns) == list('ABCDEFGHIJ')
+
+
+def test_one_hot_no_order_categorical(clickstream):
+    clickstream['other_categorical'] = clickstream['other_categorical'] \
+        .astype('category')
+    ddf = dd.from_pandas(clickstream, npartitions=10)
+    dsf = one_hot_encode(ddf,
+                         categories={'page_id': list('ABCDE'),
+                                     'other_categorical': list('FGHIJ')},
+                         index_col=['index', 'id'])
+    assert dsf._meta.empty
+    assert sorted(dsf.columns) == list('ABCDEFGHIJ')
+    sf = dsf.compute()
+    assert sf.shape == (100, 10)
+    assert isinstance(sf.index, pd.MultiIndex)
+    assert sorted(sf.columns) == list('ABCDEFGHIJ')
+
+
+def test_one_hot_prefixes(clickstream):
+    ddf = dd.from_pandas(clickstream, npartitions=10)
+    dsf = one_hot_encode(ddf,
+                         categories={'page_id': list('ABCDE'),
+                                     'other_categorical': list('FGHIJ')},
+                         index_col=['index', 'id'],
+                         prefixes=True)
+    correct_columns = list(map(lambda x: 'page_id_' + x, list('ABCDE'))) \
+        + list(map(lambda x: 'other_categorical_' + x, list('FGHIJ')))
+    assert dsf._meta.empty
+    assert sorted(dsf.columns) == sorted(correct_columns)
+    sf = dsf.compute()
+    assert sf.shape == (100, 10)
+    assert isinstance(sf.index, pd.MultiIndex)
+    assert sorted(sf.columns) == sorted(correct_columns)
+
+
+def test_one_hot_order1(clickstream):
+    ddf = dd.from_pandas(clickstream, npartitions=10)
+    dsf = one_hot_encode(ddf,
+                         categories={'page_id': list('ABCDE'),
+                                     'other_categorical': list('FGHIJ')},
+                         order=['page_id', 'other_categorical'],
+                         index_col=['index', 'id'])
+    assert dsf._meta.empty
+    assert all(dsf.columns == list('ABCDEFGHIJ'))
+    sf = dsf.compute()
+    assert sf.shape == (100, 10)
+    assert isinstance(sf.index, pd.MultiIndex)
+    assert all(sf.columns == list('ABCDEFGHIJ'))
+
+
+def test_one_hot_order2(clickstream):
+    ddf = dd.from_pandas(clickstream, npartitions=10)
+    dsf = one_hot_encode(ddf,
+                         categories={'page_id': list('ABCDE'),
+                                     'other_categorical': list('FGHIJ')},
+                         order=['other_categorical', 'page_id'],
+                         index_col=['index', 'id'])
+    assert dsf._meta.empty
+    assert all(dsf.columns == list('FGHIJABCDE'))
+    sf = dsf.compute()
+    assert sf.shape == (100, 10)
+    assert isinstance(sf.index, pd.MultiIndex)
+    assert all(sf.columns == list('FGHIJABCDE'))
+
+
+def test_one_hot_disk_categories(clickstream):
+    with tmpdir() as tmp:
+        cat_path = os.path.join(tmp, 'cat.pickle')
+        pd.Series(list('ABCDE')).to_pickle(cat_path)
+        ddf = dd.from_pandas(clickstream, npartitions=10)
+        dsf = one_hot_encode(ddf,
+                             categories={'page_id': cat_path},
+                             index_col=['index', 'id'])
+        assert dsf._meta.empty
+        sf = dsf.compute()
+        assert sf.shape == (100, 5)
+        assert isinstance(sf.index, pd.MultiIndex)
 
 
 def test_read_npz():
@@ -93,6 +200,244 @@ def test_read_npz():
         sf.iloc[50:75].to_npz(os.path.join(tmp, '3'))
         sf.iloc[75:].to_npz(os.path.join(tmp, '4'))
 
-        dsf = dsp.read_npz(os.path.join(tmp, '*.npz'))
+        dsf = dsp.read_npz(os.path.join(tmp, '*.npz'), read_divisions=True)
         sf = dsf.compute()
+        assert dsf.known_divisions
     assert np.all(sf.data.toarray() == np.identity(100))
+
+
+def test_to_npz(dsf):
+    dense = dsf.compute().todense()
+    with tmpdir() as tmp:
+        path = os.path.join(tmp, '*.npz')
+        dsf.to_npz(path)
+        loaded = dsp.read_npz(path)
+        assert loaded.known_divisions
+        res = loaded.compute().todense()
+    pdt.assert_frame_equal(dense, res)
+
+
+def test_assign_column():
+    s = pd.Series(np.arange(10))
+    ds = dd.from_pandas(s, npartitions=2)
+
+    f = pd.DataFrame(np.random.rand(10, 2), columns=['a', 'b'])
+    dsf = dsp.from_pandas(f, npartitions=2)
+
+    dsf = dsf.assign(new=ds)
+    assert dsf._meta.empty
+    sf = dsf.compute()
+    assert np.all((sf.todense() == f.assign(new=s)).values)
+
+
+@pytest.mark.parametrize('arg_dict', [
+    dict(divisions=[0, 30, 50, 70, 99]),
+    dict(npartitions=6),
+    dict(npartitions=2),
+])
+def test_repartition_divisions(arg_dict):
+    df = pd.DataFrame(np.identity(100))
+    dsf = dsp.from_pandas(df, npartitions=4)
+
+    dsf2 = dsf.repartition(**arg_dict)
+
+    assert isinstance(dsf2, dsp.SparseFrame)
+    if 'divisions' in arg_dict:
+        assert tuple(dsf2.divisions) == tuple(arg_dict['divisions'])
+
+    df2 = dsf2.compute().todense()
+    pdt.assert_frame_equal(df, df2)
+
+
+@pytest.mark.parametrize('start_part, end_part', [
+    (2, 4),
+    (3, 2),
+    (3, 3),
+])
+def test_repartition_n_divisions(start_part, end_part):
+    df = pd.DataFrame(np.identity(10))
+    dsf = dsp.from_pandas(df, npartitions=start_part)
+
+    dsf2 = dsf.repartition(npartitions=end_part)
+
+    assert isinstance(dsf2, dsp.SparseFrame)
+    assert dsf2.npartitions == end_part
+
+    df2 = dsf2.compute().todense()
+    pdt.assert_frame_equal(df, df2)
+
+
+@pytest.mark.parametrize('how', ['left', 'right', 'inner', 'outer'])
+def test_distributed_join(how):
+    left = pd.DataFrame(np.identity(10),
+                        index=np.arange(10),
+                        columns=list('ABCDEFGHIJ'))
+    right = pd.DataFrame(np.identity(10),
+                         index=np.arange(5, 15),
+                         columns=list('KLMNOPQRST'))
+    correct = left.join(right, how=how).fillna(0)
+
+    d_left = dsp.from_pandas(left, npartitions=2)
+    d_right = dsp.from_pandas(right, npartitions=2)
+
+    joined = d_left.join(d_right, how=how)
+
+    res = joined.compute().todense()
+
+    pdt.assert_frame_equal(correct, res)
+
+@pytest.mark.parametrize('idx', [
+    np.random.choice([uuid4() for i in range(1000)], size=10000),
+    np.random.randint(0, 10000, 10000),
+    np.random.randint(0, 10000, 10000).astype(float),
+    pd.date_range('01-01-1970', periods=10000, freq='s'),
+])
+def test_groupby_sum(idx):
+    for sorted in [True, False]:
+        df = pd.DataFrame(dict(A=np.ones(len(idx)), B=np.arange(len(idx))),
+                          index=idx, dtype=np.float)
+        correct = df.groupby(level=0).sum()
+        correct.sort_index(inplace=True)
+
+        spf = dsp.from_ddf(dd.from_pandas(df, npartitions=10, sort=sorted))
+        assert spf.npartitions == 10
+        grouped = spf.groupby_sum(split_out=4)
+        grouped2 = spf.groupby_sum(split_out=12)
+
+        assert grouped.npartitions == 4
+        res1 = grouped.compute().todense()
+        res1.sort_index(inplace=True)
+
+        assert grouped2.npartitions == 12
+        res2 = grouped2.compute().todense()
+        res2.sort_index(inplace=True)
+
+        pdt.assert_frame_equal(res1, correct)
+        pdt.assert_frame_equal(res2, correct)
+
+
+@pytest.mark.parametrize('how', ['left', 'inner'])
+def test_distributed_join_shortcut(how):
+    left = pd.DataFrame(np.identity(10),
+                        index=np.arange(10),
+                        columns=list('ABCDEFGHIJ'))
+    right = pd.DataFrame(np.identity(10),
+                         index=np.arange(5, 15),
+                         columns=list('KLMNOPQRST'))
+    correct = left.join(right, how=how).fillna(0)
+
+    d_left = dsp.from_pandas(left, npartitions=2)
+    d_right = sp.SparseFrame(right)
+
+    joined = d_left.join(d_right, how=how)
+
+    res = joined.compute().todense()
+
+    pdt.assert_frame_equal(correct, res)
+
+
+@pytest.mark.parametrize('idx, sorted', [
+    (list('ABCD'*25), True),
+    (np.array(list('0123'*25)).astype(int), True),
+    (np.array(list('0123'*25)).astype(float), True),
+    (list('ABCD'*25), False),
+    (np.array(list('0123'*25)).astype(int), False),
+    (np.array(list('0123'*25)).astype(float), False),
+])
+def test_groupby_sum(idx, sorted):
+
+    df = pd.DataFrame(dict(A=np.ones(100), B=np.ones(100)),
+                      index=idx)
+    correct = df.groupby(level=0).sum()
+    correct.sort_index(inplace=True)
+
+    spf = dsp.from_pandas(df, npartitions=2)
+    if not sorted:
+        spf.divisions = [None] * (spf.npartitions + 1)
+    assert spf.npartitions == 2
+    grouped = spf.groupby_sum(split_out=3)
+
+    assert grouped.npartitions == 3
+    res = grouped.compute().todense()
+    res.sort_index(inplace=True)
+
+    pdt.assert_frame_equal(res, correct)
+
+
+def test_from_ddf():
+    ddf = dd.from_pandas(
+        pd.DataFrame(np.random.rand(20, 4),
+                     columns=list('ABCD')),
+        npartitions=4
+    )
+    correct = ddf.compute()
+
+    dsf = dsp.from_ddf(ddf)
+
+    res = dsf.compute().todense()
+
+    pdt.assert_frame_equal(correct, res)
+
+    with pytest.raises(ValueError):
+        ddf = ddf.assign(A="some str value")
+        dsf = dsp.from_ddf(ddf)
+
+
+def test_sdf_sort_index():
+    data = pd.DataFrame(np.random.rand(20, 4),
+                        columns=list('ABCD'),
+                        index=np.random.choice([1,2,3,4,5,6], 20))
+    ddf = dd.from_pandas(data,
+        npartitions=4,
+        sort=False,
+    )
+
+    dsf = dsp.from_ddf(ddf)
+    dsf = dsf.sort_index()
+
+    assert dsf.known_divisions
+
+    res = dsf.compute()
+    assert res.index.is_monotonic
+    assert res.columns.tolist() == list('ABCD')
+
+
+def test_sdf_sort_index_auto_partition():
+    data = pd.DataFrame(np.random.rand(20000, 4),
+                        columns=list('ABCD'),
+                        index=np.random.choice(list(range(5000)), 20000))
+    ddf = dd.from_pandas(data,
+        npartitions=20,
+        sort=False,
+    )
+
+    dsf = dsp.from_ddf(ddf)
+    dsf = dsf.sort_index(npartitions='auto', partition_size=80000)
+
+    assert dsf.known_divisions
+    assert dsf.npartitions == 16
+
+    res = dsf.compute()
+    assert res.index.is_monotonic
+    assert res.columns.tolist() == list('ABCD')
+
+
+def test_get_partition(dsf):
+    correct = dsf.compute().todense()
+    parts = [dsf.get_partition(i).compute().todense()
+             for i in range(dsf.npartitions)]
+    res = pd.concat(parts, axis=0)
+    pdt.assert_frame_equal(res, correct)
+
+
+def test_set_index(clickstream):
+    ddf = dd.from_pandas(clickstream, npartitions=10)
+    dsf = one_hot_encode(ddf,
+                         categories={'page_id': list('ABCDE'),
+                                     'other_categorical': list('FGHIJ')},
+                         order=['other_categorical', 'page_id'],
+                         index_col=['index', 'id'])
+    dense = dsf.compute().set_index(level=1).todense()
+    res = dsf.set_index(level=1).compute().todense()
+
+    pdt.assert_frame_equal(dense, res)

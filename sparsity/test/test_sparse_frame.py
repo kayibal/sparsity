@@ -1,15 +1,18 @@
 # coding=utf-8
-import os
 import datetime as dt
-import pandas as pd
+import os
 
-import dask.dataframe as dd
+from contextlib import contextmanager
+
 import numpy as np
+import pandas as pd
 import pytest
-from dask.async import get_sync
+from moto import mock_s3
 from scipy import sparse
-
 from sparsity import SparseFrame, sparse_one_hot
+from sparsity.io import _csr_to_dict
+
+from .conftest import tmpdir
 
 try:
     import traildb
@@ -17,29 +20,39 @@ except (ImportError, OSError):
     traildb = False
 
 
-# 2017 starts with a sunday
-@pytest.fixture()
-def sampledata():
-    def gendata(n):
-        sample_data = pd.DataFrame(
-            dict(date=pd.date_range("2017-01-01", periods=n)))
-        sample_data["weekday"] = sample_data.date.dt.weekday_name
-        sample_data["id"] = np.tile(np.arange(7), len(sample_data) // 7 + 1)[
-                            :len(sample_data)]
-        return sample_data
+@contextmanager
+def mock_s3_fs(bucket, data=None):
+    """Mocks an s3 bucket
 
-    return gendata
+    Parameters
+    ----------
+    bucket: str
+        bucket name
+    data: dict
+        dictionary with paths relative to bucket and
+        bytestrings as values. Will mock data in bucket
+        if supplied.
 
-
-@pytest.fixture()
-def sf_midx():
-    midx = pd.MultiIndex.from_arrays(
-        [pd.date_range("2016-10-01", periods=5),
-         np.arange(5)]
-    )
-    cols = list('ABCDE')
-    sf = SparseFrame(np.identity(5), index=midx, columns=cols)
-    return sf
+    Returns
+    -------
+    """
+    try:
+        m = mock_s3()
+        m.start()
+        import boto3
+        import s3fs
+        client = boto3.client('s3', region_name='eu-west-1')
+        client.create_bucket(Bucket=bucket)
+        if data is not None:
+            data = data.copy()
+            for key, value in data.items():
+                client.put_object(Bucket=bucket, Key=key, Body=value)
+        yield
+    finally:
+        if data is not None:
+            for key in data.keys():
+                client.delete_object(Bucket=bucket, Key=key)
+        m.stop()
 
 
 def test_empty_init():
@@ -47,11 +60,8 @@ def test_empty_init():
     assert sf.data.shape == (0, 2)
 
 
-def test_groupby():
-    shuffle_idx = np.random.permutation(np.arange(100))
-    index = np.tile(np.arange(10), 10)
-    data = np.vstack([np.identity(10) for _ in range(10)])
-    t = SparseFrame(data[shuffle_idx, :], index=index[shuffle_idx])
+def test_groupby(groupby_frame):
+    t = groupby_frame
     res = t.groupby_sum().data.todense()
     assert np.all(res == (np.identity(10) * 10))
 
@@ -155,6 +165,10 @@ def test_loc():
     # test slices
     assert np.all(sf.loc[:'B'].data.todense() == np.identity(5)[:2])
 
+    # test all
+    assert np.all(sf.loc[list("ABCDE")].data.todense() == np.identity(5))
+    assert np.all(sf.loc[:, :].data.todense() == np.identity(5))
+    assert np.all(sf.loc[:].data.todense() == np.identity(5))
 
     sf = SparseFrame(np.identity(5), pd.date_range("2016-10-01", periods=5))
 
@@ -171,7 +185,7 @@ def test_loc():
                   np.identity(5)[:3])
 
 
-def test_loc_multi_index(sf_midx):
+def test_loc_multi_index(sf_midx, sf_midx_int):
 
     assert sf_midx.loc['2016-10-01'].data[0, 0] == 1
 
@@ -186,6 +200,9 @@ def test_loc_multi_index(sf_midx):
     dt_slice = slice(dt.date(2016, 10, 1), dt.date(2016, 10, 3))
     assert np.all(sf_midx.loc[dt_slice].data.todense() ==
                   np.identity(5)[:3])
+
+    assert np.all(sf_midx_int.loc[1].todense().values == sf_midx.data[:4,:])
+    assert np.all(sf_midx_int.loc[0].todense().values == sf_midx.data[4, :])
 
 
 def test_set_index(sf_midx):
@@ -209,6 +226,26 @@ def test_set_index(sf_midx):
     assert np.all(sf.loc[:2].data.todense() == np.identity(5)[:2])
 
     # assert np.all(sf.loc[[4, 5]].data.todense() == np.identity(5)[[3, 4]])
+
+
+def test_save_load_multiindex(sf_midx):
+    with tmpdir() as tmp:
+        # test new
+        path = os.path.join(tmp, 'sf.npz')
+        sf_midx.to_npz(path)
+        res = SparseFrame.read_npz(path)
+        assert isinstance(res.index, pd.MultiIndex)
+
+        # test backwards compatibility
+        def _to_npz_legacy(sf, filename):
+            data = _csr_to_dict(sf.data)
+            data['frame_index'] = sf.index.values
+            data['frame_columns'] = sf.columns.values
+            np.savez(filename, **data)
+
+        _to_npz_legacy(sf_midx, path)
+        res = SparseFrame.read_npz(path)
+        assert isinstance(res.index, pd.MultiIndex)
 
 
 def test_new_column_assign_array():
@@ -342,7 +379,19 @@ def test_add_no_overlap(complex_example):
     assert np.all(res.data.todense() == correct)
 
 
-def test_csr_one_hot_series(sampledata):
+def test_csr_one_hot_series_disk_categories(sampledata):
+    with tmpdir() as tmp:
+        categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
+                      'Thursday', 'Friday', 'Saturday']
+        cat_path = os.path.join(tmp, 'bla.pickle')
+        pd.Series(categories).to_pickle(cat_path)
+        sparse_frame = sparse_one_hot(sampledata(49),
+                                      categories={'weekday': cat_path})
+        res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
+        assert np.all(res == np.identity(7) * 7)
+
+
+def test_csr_one_hot_series_legacy(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday', 'Saturday']
     sparse_frame = sparse_one_hot(sampledata(49), 'weekday', categories)
@@ -350,10 +399,175 @@ def test_csr_one_hot_series(sampledata):
     assert np.all(res == np.identity(7) * 7)
 
 
+def test_csr_one_hot_series(sampledata, weekdays, weekdays_abbr):
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    categories = {'weekday': weekdays,
+                  'weekday_abbr': weekdays_abbr}
+
+    sparse_frame = sparse_one_hot(sampledata(49), categories=categories,
+                                  order=['weekday', 'weekday_abbr'])
+
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
+    assert np.all(res == correct)
+    assert all(sparse_frame.columns == (weekdays + weekdays_abbr))
+
+
+def test_csr_one_hot_series_categorical_same_order(sampledata, weekdays,
+                                                   weekdays_abbr):
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    data = sampledata(49, categorical=True)
+
+    categories = {'weekday': data['weekday'].cat.categories.tolist(),
+                  'weekday_abbr': data['weekday_abbr'].cat.categories.tolist()}
+
+    sparse_frame = sparse_one_hot(data,
+                                  categories=categories,
+                                  order=['weekday', 'weekday_abbr'],
+                                  ignore_cat_order_mismatch=False)
+
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)) \
+        .todense()[weekdays + weekdays_abbr].values
+    assert np.all(res == correct)
+    assert set(sparse_frame.columns) == set(weekdays + weekdays_abbr)
+
+
+def test_csr_one_hot_series_categorical_different_order(sampledata, weekdays,
+                                                        weekdays_abbr):
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    data = sampledata(49, categorical=True)
+
+    categories = {
+        'weekday': data['weekday'].cat.categories.tolist()[::-1],
+        'weekday_abbr': data['weekday_abbr'].cat.categories.tolist()[::-1]
+    }
+
+    with pytest.raises(ValueError):
+        sparse_frame = sparse_one_hot(data,
+                                      categories=categories,
+                                      order=['weekday', 'weekday_abbr'],
+                                      ignore_cat_order_mismatch=False)
+
+
+def test_csr_one_hot_series_categorical_different_order_ignore(
+        sampledata, weekdays, weekdays_abbr):
+
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    data = sampledata(49, categorical=True)
+
+    categories = {
+        'weekday': data['weekday'].cat.categories.tolist()[::-1],
+        'weekday_abbr': data['weekday_abbr'].cat.categories.tolist()[::-1]
+    }
+
+    sparse_frame = sparse_one_hot(data,
+                                  categories=categories,
+                                  order=['weekday', 'weekday_abbr'],
+                                  ignore_cat_order_mismatch=True)
+
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)) \
+        .todense()[weekdays + weekdays_abbr].values
+    assert np.all(res == correct)
+    assert set(sparse_frame.columns) == set(weekdays + weekdays_abbr)
+
+
+def test_csr_one_hot_series_categorical_no_categories(
+        sampledata, weekdays, weekdays_abbr):
+
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    data = sampledata(49, categorical=True)
+
+    categories = {
+        'weekday': None,
+        'weekday_abbr': None
+    }
+
+    sparse_frame = sparse_one_hot(data,
+                                  categories=categories,
+                                  order=['weekday', 'weekday_abbr'],
+                                  ignore_cat_order_mismatch=True)
+
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)) \
+        .todense()[weekdays + weekdays_abbr].values
+    assert np.all(res == correct)
+    assert set(sparse_frame.columns) == set(weekdays + weekdays_abbr)
+
+
+def test_csr_one_hot_series_other_order(sampledata, weekdays, weekdays_abbr):
+
+    categories = {'weekday': weekdays,
+                  'weekday_abbr': weekdays_abbr}
+
+    sparse_frame = sparse_one_hot(sampledata(49), categories=categories,
+                                  order=['weekday_abbr', 'weekday'])
+
+    assert all(sparse_frame.columns == (weekdays_abbr + weekdays))
+
+
+def test_csr_one_hot_series_no_order(sampledata, weekdays, weekdays_abbr):
+
+    categories = {'weekday': weekdays,
+                  'weekday_abbr': weekdays_abbr}
+
+    sparse_frame = sparse_one_hot(sampledata(49), categories=categories)
+
+    assert sorted(sparse_frame.columns) == sorted(weekdays_abbr + weekdays)
+
+
+def test_csr_one_hot_series_prefixes(sampledata, weekdays, weekdays_abbr):
+    correct = np.hstack((np.identity(7) * 7,
+                         np.identity(7) * 7))
+
+    categories = {'weekday': weekdays,
+                  'weekday_abbr': weekdays_abbr}
+
+    sparse_frame = sparse_one_hot(sampledata(49), categories=categories,
+                                  order=['weekday', 'weekday_abbr'],
+                                  prefixes=True)
+
+    res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
+    assert np.all(res == correct)
+    correct_columns = list(map(lambda x: 'weekday_' + x, weekdays)) \
+        + list(map(lambda x: 'weekday_abbr_' + x, weekdays_abbr))
+    assert all(sparse_frame.columns == correct_columns)
+
+
+def test_csr_one_hot_series_same_categories(weekdays):
+    sample_data = pd.DataFrame(
+        dict(date=pd.date_range("2017-01-01", periods=7)))
+    sample_data["weekday"] = sample_data.date.dt.weekday_name
+    sample_data["weekday2"] = sample_data.date.dt.weekday_name
+
+    categories = {'weekday': weekdays,
+                  'weekday2': weekdays}
+
+    with pytest.raises(ValueError):
+        sparse_one_hot(sample_data, categories=categories,
+                       order=['weekday', 'weekday2'])
+
+    sparse_frame = sparse_one_hot(sample_data, categories=categories,
+                                  order=['weekday', 'weekday2'],
+                                  prefixes=True)
+
+    correct_columns = list(map(lambda x: 'weekday_' + x, weekdays)) \
+        + list(map(lambda x: 'weekday2_' + x, weekdays))
+    assert all(sparse_frame.columns == correct_columns)
+
+
 def test_csr_one_hot_series_too_much_categories(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday', 'Yesterday', 'Saturday', 'Birthday']
-    sparse_frame = sparse_one_hot(sampledata(49), 'weekday', categories)
+    sparse_frame = sparse_one_hot(sampledata(49),
+                                  categories={'weekday': categories})
     res = sparse_frame.groupby_sum(np.tile(np.arange(7), 7)).data.todense()
 
     correct = np.identity(7) * 7
@@ -367,7 +581,7 @@ def test_csr_one_hot_series_too_little_categories(sampledata):
     categories = ['Sunday', 'Monday', 'Tuesday', 'Wednesday',
                   'Thursday', 'Friday']
     with pytest.raises(ValueError):
-        sparse_one_hot(sampledata(49), 'weekday', categories)
+        sparse_one_hot(sampledata(49), categories={'weekday': categories})
 
 
 @pytest.mark.skipif(traildb is False, reason="TrailDB not installed")
@@ -393,13 +607,31 @@ def test_npz_io(complex_example):
     os.remove('/tmp/sparse.npz')
 
 
+def test_npz_io_s3(complex_example):
+    with mock_s3_fs('sparsity'):
+        sf, second, third = complex_example
+        sf.to_npz('s3://sparsity/sparse.npz')
+        loaded = SparseFrame.read_npz('s3://sparsity/sparse.npz')
+        assert np.all(loaded.data.todense() == sf.data.todense())
+        assert np.all(loaded.index == sf.index)
+        assert np.all(loaded.columns == sf.columns)
+
+
 def test_getitem():
-    sf = SparseFrame(np.identity(10), columns=list('abcdefghij'))
+    id_ = np.identity(10)
+    sf = SparseFrame(id_, columns=list('abcdefghij'))
     assert sf['a'].data.todense()[0] == 1
     assert sf['j'].data.todense()[9] == 1
+    assert np.all(sf[['a', 'b']].data.todense() == np.asmatrix(id_[:, [0, 1]]))
     tmp = sf[['j', 'a']].data.todense()
     assert tmp[9, 0] == 1
     assert tmp[0, 1] == 1
+    assert (sf[list('abcdefghij')].data.todense() == np.identity(10)).all()
+    assert sf[[]].shape == (10, 0)
+    assert len(sf[[]].columns) == 0
+    assert isinstance(sf.columns, type(sf[[]].columns))
+    with pytest.raises(ValueError):
+        sf[None]
 
 
 def test_vstack():
@@ -424,12 +656,10 @@ def test_vstack_multi_index(clickstream):
     df_0 = clickstream.iloc[:len(clickstream) // 2]
     df_1 = clickstream.iloc[len(clickstream) // 2:]
     sf_0 = sparse_one_hot(df_0,
-                          categories=list('ABCDE'),
-                          column='page_id',
+                          categories={'page_id': list('ABCDE')},
                           index_col=['index', 'id'])
     sf_1 = sparse_one_hot(df_1,
-                          categories=list('ABCDE'),
-                          column='page_id',
+                          categories={'page_id': list('ABCDE')},
                           index_col=['index', 'id'])
     res = SparseFrame.vstack([sf_0, sf_1])
     assert isinstance(res.index, pd.MultiIndex)
@@ -441,36 +671,6 @@ def test_boolean_indexing():
     assert isinstance(res, SparseFrame)
     assert res.shape == (2, 5)
     assert res.index.tolist() == [3, 4]
-
-
-def test_dask_loc(clickstream):
-    sf = dd.from_pandas(clickstream, npartitions=10) \
-        .map_partitions(
-        sparse_one_hot,
-        column='page_id',
-        categories=list('ABCDE'),
-        meta=list
-    )
-
-    res = sf.loc['2016-01-15':'2016-02-15']
-    res = SparseFrame.concat(res.compute(get=get_sync).tolist())
-    assert res.index.date.max() == dt.date(2016, 2, 15)
-    assert res.index.date.min() == dt.date(2016, 1, 15)
-
-
-def test_dask_multi_index_loc(clickstream):
-    sf = dd.from_pandas(clickstream, npartitions=10) \
-        .map_partitions(
-            sparse_one_hot,
-            column='page_id',
-            index_col=['index', 'id'],
-            categories=list('ABCDE'),
-            meta=list
-    )
-    res = sf.loc['2016-01-15':'2016-02-15']
-    res = SparseFrame.vstack(res.compute(get=get_sync).tolist())
-    assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
-    assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
 
 
 def test_rename():
@@ -523,6 +723,20 @@ def test_repr():
     assert isinstance(res, str)
 
 
+def test_groupby_agg(groupby_frame):
+    res = groupby_frame.groupby_agg(
+        level=0,
+        agg_func=lambda x: x.sum(axis=0)
+    ).data.todense()
+    assert np.all(res == (np.identity(10) * 10))
+
+    res = groupby_frame.groupby_agg(
+        level=0,
+        agg_func=lambda x: x.mean(axis=0)
+    ).data.todense()
+    assert np.all(res.round() == np.identity(10))
+
+
 def test_init_with_pandas():
     df = pd.DataFrame(np.identity(5),
                       index=[
@@ -544,3 +758,160 @@ def test_init_with_pandas():
     df['A'] = 'bla'
     with pytest.raises(TypeError):
         sf = SparseFrame(df)
+
+
+def test_multiply_rowwise():
+    # Row wise multiplication with different types
+    sf = SparseFrame(np.ones((5, 5)))
+    other = np.arange(5)
+    msg = "Row wise multiplication failed"
+
+    # nd.array
+    other = other.reshape(1, -1)
+    res = sf.multiply(other, axis=0)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+    # SparseFrame
+    _other = SparseFrame(other)
+    res = sf.multiply(_other, axis=0)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+    # csr_matrix
+    _other = _other.data
+    res = sf.multiply(_other, axis=0)
+    assert np.all(res.sum(axis=0) == 5 * other), msg
+
+
+def test_multiply_colwise():
+    # Column wise multiplication with different types
+    sf = SparseFrame(np.ones((5, 5)))
+    other = np.arange(5)
+    msg = "Column wise multiplication failed"
+
+    # nd.array
+    other = other.reshape(-1, 1)
+    res = sf.multiply(other, axis=1)
+    assert np.all(res.sum(axis=1) == 5 * other), msg
+
+    # SparseFrame
+    _other = SparseFrame(other)
+    res = sf.multiply(_other, axis=1)
+    assert np.all(res.sum(axis=1) == 5 * other), msg
+
+    # csr_matrix
+    _other = _other.data
+    _other.toarray()
+    res = sf.multiply(_other, axis=1)
+    assert np.all(res.sum(axis=1) == 5 * other), msg
+
+
+def test_drop_single_label():
+    old_names = list('ABCDE')
+    sf = SparseFrame(np.identity(5), columns=old_names)
+    sf = sf.drop('A', axis=1)
+
+    correct = np.identity(5)[:, 1:]
+    assert sf.columns.tolist() == list('BCDE')
+    np.testing.assert_array_equal(sf.data.todense(), correct)
+
+
+def test_drop_multiple_labels():
+    old_names = list('ABCDE')
+    sf = SparseFrame(np.identity(5), columns=old_names)
+    sf = sf.drop(['A', 'C'], axis=1)
+
+    correct = np.identity(5)[:, [1, 3, 4]]
+    assert sf.columns.tolist() == list('BDE')
+    np.testing.assert_array_equal(sf.data.todense(), correct)
+
+
+def test_label_based_indexing_col(sample_frame_labels):
+    key = ['A', 'B']
+    results = [
+        sample_frame_labels[key],
+        sample_frame_labels.loc[:, key],
+        sample_frame_labels.reindex(columns=key)
+    ]
+    for res in results:
+        np.testing.assert_array_equal(
+            res.data.todense(), np.identity(5)[:, :2])
+        assert (res.index == pd.Index(list('VWXYZ'))).all()
+        assert (res.columns == pd.Index(list('AB'))).all()
+
+
+def test_label_based_indexing_idx(sample_frame_labels):
+    key = ['X', 'Y', 'Z']
+    results = [
+        sample_frame_labels.loc[key],
+        sample_frame_labels.loc[key, :],
+        sample_frame_labels.reindex(labels=key, axis=0),
+        sample_frame_labels.reindex(index=key)
+    ]
+    for res in results:
+        np.testing.assert_array_equal(
+            res.data.todense(), np.identity(5)[2:, :])
+        assert (res.index == pd.Index(['X', 'Y', 'Z'])).all()
+        assert (res.columns == pd.Index(list('ABCDE'))).all()
+
+
+def test_label_based_col_and_idx(sample_frame_labels):
+    key = ['V', 'W'], ['A', 'B']
+    results = [
+        sample_frame_labels.loc[key],
+        sample_frame_labels.loc[['V', 'W'], ['A', 'B']],
+        sample_frame_labels.reindex(index=key[0], columns=key[1])
+    ]
+    for res in results:
+        np.testing.assert_array_equal(
+            res.data.todense(), np.identity(2))
+        assert (res.index == pd.Index(list('VW'))).all()
+        assert (res.columns == pd.Index(list('AB'))).all()
+
+
+def test_indexing_boolean_label_col_and_idx(sample_frame_labels):
+    res = sample_frame_labels.loc[[True, True, False, False, False], ['A', 'B']]
+    np.testing.assert_array_equal(
+        res.data.todense(), np.identity(2))
+    assert (res.index == pd.Index(list('VW'))).all()
+    assert (res.columns == pd.Index(list('AB'))).all()
+
+    res = sample_frame_labels.loc[['V', 'W'], [True, True, False, False, False]]
+    np.testing.assert_array_equal(
+        res.data.todense(), np.identity(2))
+    assert (res.index == pd.Index(list('VW'))).all()
+    assert (res.columns == pd.Index(list('AB'))).all()
+
+
+def test_error_reindex_duplicate_axis():
+    sf = SparseFrame(np.identity(5),
+                     columns = list('ABCDE'),
+                     index = list('UUXYZ'))
+    with pytest.raises(ValueError):
+        sf.reindex(['U', 'V'])
+
+
+def test_empty_elemwise():
+    sf_empty = SparseFrame(np.array([]), columns=['A', 'B'])
+    sf = SparseFrame(np.identity(2), columns=['A', 'B'])
+
+    res = sf_empty.add(sf).data.todense()
+    assert np.all(res == sf.data.todense())
+
+    res = sf.add(sf_empty).data.todense()
+    assert np.all(res == sf.data.todense())
+
+    with pytest.raises(ValueError):
+        res = sf.add(sf_empty, fill_value=None)
+
+
+def test_loc_duplicate_index():
+    sf = SparseFrame(np.identity(5),
+                     columns=list('UUXYZ'),
+                     index=list('AAABB'))
+    assert len(sf.loc['A'].index) == 3
+    assert len(sf.loc['B'].index) == 2
+    assert np.all(sf.loc['A'].todense().values == np.identity(5)[:3])
+    assert np.all(sf.loc['B'].todense().values == np.identity(5)[3:])
+
+    assert len(sf.loc[:, 'U'].columns) == 2
+    assert np.all(sf.loc[:, 'U'].todense().values == np.identity(5)[:, :2])
