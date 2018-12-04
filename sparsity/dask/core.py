@@ -39,7 +39,6 @@ def make_meta_sparsity(inp):
         raise NotImplementedError("Can't make meta for type: {}"
                                   .format(str(type(inp))))
 
-
 @meta_nonempty.register(sp.SparseFrame)
 def meta_nonempty_sparsity(x):
     idx = _nonempty_index(x.index)
@@ -53,6 +52,8 @@ def optimize(dsk, keys, **kwargs):
 
 
 def finalize(results):
+    if all(map(lambda x: x.empty, results)):
+        return results[0]
     results = [r for r in results if not r.empty]
     return sp.SparseFrame.vstack(results)
 
@@ -137,6 +138,10 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         df2 = self._meta.assign(**_extract_meta(kwargs))
         return elemwise(methods.assign, self, *pairs, meta=df2)
 
+    @derived_from(sp.SparseFrame)
+    def add(self, other, how='outer', fill_value=0,):
+        return elemwise(sp.SparseFrame.add, self, other, meta=self._meta)
+
     def __dask_keys__(self):
         return [(self._name, i) for i in range(self.npartitions)]
 
@@ -186,10 +191,12 @@ class SparseFrame(dask.base.DaskMethodsMixin):
              rsuffix='', npartitions=None):
         from .multi import join_indexed_sparseframes
 
-        if isinstance(other, sp.SparseFrame) and how in ['left', 'inner']:
+        if isinstance(other, sp.SparseFrame):
             meta = sp.SparseFrame.join(self._meta_nonempty,
                                        other,
                                        how=how)
+            # make empty meta
+            meta = meta.loc[[False] * meta.shape[0], :]
             join_func = partial(sp.SparseFrame.join, other=other,
                                 how=how)
             return self.map_partitions(join_func, meta=meta, name='simplejoin')
@@ -260,7 +267,7 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         """
         from .shuffle import sort_index
         return sort_index(self, npartitions=npartitions,
-                          divisions=None, **kwargs)
+                          divisions=divisions, **kwargs)
 
     @derived_from(sp.SparseFrame)
     def set_index(self, column=None, idx=None, level=None):
@@ -269,11 +276,30 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         if idx is not None:
             raise NotImplementedError('Only column or level supported')
         new_name = self._meta.index.names[level] if level else column
-        meta = self._meta.set_index(pd.Index([], name=new_name))
+
+        if level is not None:
+            new_idx = self._meta.index.get_level_values(level)
+        else:
+            new_idx = pd.Index(np.empty((0,0), dtype=self._meta.values.dtype))
+        new_idx.name = new_name
+
+        meta = self._meta.set_index(idx=new_idx)
         res = self.map_partitions(sp.SparseFrame.set_index, meta=meta,
                                   column=column, idx=idx, level=level)
-        res.divisions = [None] * ( self.npartitions + 1)
+        res.divisions = tuple([None] * ( self.npartitions + 1))
         return res
+
+    def rename(self, columns):
+        _meta = self._meta.rename(columns=columns)
+        return self.map_partitions(sp.SparseFrame.rename, meta=_meta,
+                                   columns=columns)
+
+    def drop(self, labels, axis=1):
+        if axis != 1:
+            raise NotImplementedError('Axis != 1 is currently not supported.')
+        _meta = self._meta.drop(labels=labels)
+        return self.map_partitions(sp.SparseFrame.drop, meta=_meta,
+                                   labels=labels)
 
     def __repr__(self):
         return \
@@ -623,6 +649,7 @@ def apply_and_enforce(func, arg, kwargs, meta):
     columns = meta.columns
     if isinstance(sf, sp.SparseFrame):
         if len(sf.data.data) == 0:
+            assert meta.empty, "Received non empty meta"
             return meta
         if (len(columns) == len(sf.columns) and
                     type(columns) is type(sf.columns) and
