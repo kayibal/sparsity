@@ -1,5 +1,6 @@
 import datetime as dt
 import os
+from distributed import Client
 from uuid import uuid4
 
 import dask
@@ -460,3 +461,13 @@ def test_set_index(clickstream):
     res = dsf.set_index(level=1).compute().todense()
 
     pdt.assert_frame_equal(dense, res)
+
+
+def test_persist(dsf):
+    correct = dsf.compute().todense()
+    client = Client()
+    persisted = client.persist(dsf)
+
+    res = persisted.compute().todense()
+
+    pdt.assert_frame_equal(res, correct)

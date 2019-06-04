@@ -58,6 +58,7 @@ def test_empty_init():
     sf = SparseFrame(np.array([]), index=['A', 'B'], columns=[])
     assert sf.data.shape == (2, 0)
 
+
 def test_groupby(groupby_frame):
     t = groupby_frame
     res = t.groupby_sum().data.todense()
