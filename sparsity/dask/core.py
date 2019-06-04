@@ -89,6 +89,14 @@ class SparseFrame(dask.base.DaskMethodsMixin):
         dsk2 = optimize(dsk, keys)
         return dsk2
 
+
+    def __dask_postpersist__(self):
+        def rebuild(dsk, *extra_args):
+            return SparseFrame(dsk, name=self._name,
+                               meta=self._meta,
+                               divisions=self.divisions)
+        return rebuild, ()
+
     def __dask_postcompute__(self):
         return finalize, ()
 
@@ -209,7 +217,7 @@ class SparseFrame(dask.base.DaskMethodsMixin):
     def to_npz(self, filename, blocksize=None,
                storage_options=None, compute=True):
         from sparsity.dask.io import to_npz
-        to_npz(self, filename, blocksize, storage_options, compute)
+        return to_npz(self, filename, blocksize, storage_options, compute)
 
     def groupby_sum(self, split_out=1, split_every=8):
         meta = self._meta
