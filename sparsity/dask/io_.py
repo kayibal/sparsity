@@ -10,7 +10,7 @@ from dask.dataframe.utils import make_meta
 
 import sparsity as sp
 from sparsity.dask.core import SparseFrame
-from sparsity.io import _write_dict_npz, _open_npz_archive
+from sparsity.io_ import _write_dict_npz, _open_npz_archive
 
 _sorted = sorted
 
@@ -130,7 +130,7 @@ def _npz_read_divisions(paths, level=None):
     divisions = []
     assert len(paths) > 1
     for p in paths:
-        archive = np.load(p)
+        archive = np.load(p, allow_pickle=True)
         idx = archive['frame_index']
         if level is not None:
             idx = idx.get_level_values(level)
