@@ -4,3 +4,5 @@ build/
 *.so
 traildb_sparse.c
 __pycache__
+*.egg-info
+*.npz
