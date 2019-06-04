@@ -21,7 +21,7 @@ setup(
     cmdclass=versioneer.get_cmdclass(),
     install_requires=[
         'pandas>=0.21.0,<=0.23.4',
-        'scipy>=0.18.1',
+        'scipy>0.19.1',
         'numpy>=1.12.0',
         's3fs>=0.1.0',
         'dask>0.20.0'

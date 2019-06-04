@@ -216,7 +216,7 @@ class SparseFrame(dask.base.DaskMethodsMixin):
 
     def to_npz(self, filename, blocksize=None,
                storage_options=None, compute=True):
-        import sparsity.dask.io as dsp_io
+        import sparsity.dask.io_ as dsp_io
         return dsp_io.to_npz(self, filename, blocksize, storage_options, compute)
 
     def groupby_sum(self, split_out=1, split_every=8):
