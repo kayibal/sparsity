@@ -1,18 +1,18 @@
-import datetime as dt
 import os
-from distributed import Client
-from uuid import uuid4
 
 import dask
 import dask.dataframe as dd
+import datetime as dt
 import numpy as np
 import pandas as pd
+import pandas.util.testing as pdt
 import pytest
+from distributed import Client
+from uuid import uuid4
+
 import sparsity as sp
 import sparsity.dask as dsp
 from sparsity.dask.reshape import one_hot_encode
-import pandas.util.testing as pdt
-
 from .conftest import tmpdir
 
 dask.config.set(scheduler=dask.local.get_sync)
@@ -45,6 +45,63 @@ def test_map_partitions():
     assert res.shape == (10, 2)
 
 
+def test_todense():
+    data = pd.DataFrame(np.random.rand(10, 2))
+    dsf = dsp.from_pandas(data, npartitions=3)
+    res = dsf.todense()
+    assert isinstance(res, dd.DataFrame)
+    computed = res.compute()
+    pdt.assert_frame_equal(computed, data, check_dtype=False)
+
+
+def test_todense_series():
+    data = pd.DataFrame(np.random.rand(10, 2))
+    dsf = dsp.from_pandas(data, npartitions=3)[0]
+    res = dsf.todense()
+    assert isinstance(res, dd.Series)
+    computed = res.compute()
+    pdt.assert_series_equal(computed, data[0], check_dtype=False)
+
+
+@pytest.mark.parametrize('item', [
+    'X',
+    ['X', 'Y'],
+])
+def test_getitem(item):
+    df = pd.DataFrame(np.random.rand(10, 3), columns=list('XYZ'),
+                      index=list('ABCDEFGHIJ'))
+    dsf = dsp.from_pandas(df, npartitions=2)
+    
+    correct_cols = item if isinstance(item, list) else [item]
+    res = dsf[item]
+    assert res.columns.tolist() == correct_cols
+    res_computed = res.compute()
+    assert res_computed.columns.tolist() == correct_cols
+    if not isinstance(item, list):
+        pdt.assert_series_equal(df[item], res_computed.todense())
+    else:
+        pdt.assert_frame_equal(df[item], res_computed.todense())
+
+
+@pytest.mark.parametrize('item', [
+    'X',
+    ['X', 'Y'],
+])
+def test_getitem_empty(item):
+    df = pd.DataFrame([], columns=list('XYZ'), dtype=int)
+    dsf = dsp.from_ddf(dd.from_pandas(df, npartitions=1))
+    
+    correct_cols = item if isinstance(item, list) else [item]
+    res = dsf[item]
+    assert res.columns.tolist() == correct_cols
+    res_computed = res.compute()
+    assert res_computed.columns.tolist() == correct_cols
+    if not isinstance(item, list):
+        pdt.assert_series_equal(df[item], res_computed.todense())
+    else:
+        pdt.assert_frame_equal(df[item], res_computed.todense())
+    
+
 @pytest.mark.parametrize('iindexer, correct_shape', [
     (slice('A', 'B'), (2, 2)),
     (slice('C', None), (8, 2)),
@@ -63,6 +120,7 @@ def test_loc(iindexer, correct_shape):
 
     assert isinstance(res, sp.SparseFrame)
     assert res.shape == correct_shape
+
 
 def test_dask_loc(clickstream):
     sf = one_hot_encode(dd.from_pandas(clickstream, npartitions=10),
@@ -84,6 +142,7 @@ def test_dask_multi_index_loc(clickstream):
     res = res.compute()
     assert res.index.get_level_values(0).date.min() == dt.date(2016, 1, 15)
     assert res.index.get_level_values(0).date.max() == dt.date(2016, 2, 15)
+
 
 def test_repr():
     dsf = dsp.from_pandas(pd.DataFrame(np.random.rand(10, 2)),
