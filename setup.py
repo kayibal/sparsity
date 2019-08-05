@@ -24,7 +24,8 @@ setup(
         'scipy>0.19.1',
         'numpy>=1.12.0',
         's3fs>=0.1.0',
-        'dask>0.20.0'
+        'dask>=2.1.0',
+        'fsspec>=0.3.3',
     ],
     test_requires=[
         'boto3==1.7.84',

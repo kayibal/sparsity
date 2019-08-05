@@ -182,14 +182,16 @@ class SparseFrame(object):
         if not self.empty:
             dense = np.asarray(self.data.toarray())
         else:
-            dense = np.empty(shape=(0, len(self.columns)))
+            dense = np.empty(shape=(0, len(self.columns)),
+                             dtype=self.data.dtype)
 
         if self.shape[0] == 1 or self.shape[1] == 1:
             dense = dense.reshape(-1)
 
         if pandas:
             if self.empty:
-                dense = pd.DataFrame(np.empty(shape=self.shape),
+                dense = pd.DataFrame(np.empty(shape=self.shape,
+                                              dtype=self.data.dtype),
                                      columns=self.columns,
                                      index=self._index[:0])
                 if self.data.shape[1] == 1:  # 1 empty column => empty Series
