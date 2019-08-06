@@ -15,7 +15,7 @@ try:
 except ImportError:
     try:
         # pandas>0.21.0
-        from pandas.core.indexes.base import _ensure_index
+        from pandas.core.indexes.base import _ensure_index as ensure_index
     except ImportError:
         # pandas==0.21.*
         from pandas.indexes.base import _ensure_index as ensure_index
