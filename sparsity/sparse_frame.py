@@ -1,12 +1,12 @@
 # coding=utf-8
+import functools
 import traceback
 import warnings
 from collections import OrderedDict
+from functools import partial, reduce
 
-import functools
 import numpy as np
 import pandas as pd
-from functools import partial, reduce
 from pandas.api import types
 
 try:
@@ -825,7 +825,7 @@ class SparseFrame(object):
             item = [item]
         if len(item) > 0:
             indexer = self.loc._convert_to_indexer(
-                item, axis=1, raise_missing=True
+                item, axis=1
             )
             return self._take(indexer, axis=1)
         else:
